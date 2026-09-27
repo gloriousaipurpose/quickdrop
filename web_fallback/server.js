@@ -62,8 +62,13 @@ const pcName = os.hostname();
 // UDP Advertiser (Local Wi-Fi)
 try {
   const socket = dgram.createSocket({ type: 'udp4', reuseAddr: true });
+  socket.on('error', (err) => {
+    // Ignore UDP socket errors gracefully on cloud environments like Render
+  });
   socket.bind(UDP_PORT, () => {
-    socket.setBroadcast(true);
+    try {
+      socket.setBroadcast(true);
+    } catch (e) {}
   });
 
   function broadcastPresence() {
@@ -127,7 +132,10 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
   }
 
   if (req.url === '/status' || req.url === '/ping') {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.writeHead(200, { 
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-cache, no-store, must-revalidate'
+    });
     res.end(JSON.stringify({
       status: 'Ready to receive',
       name: pcName,
@@ -245,7 +253,10 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
   if (req.url === '/' || req.url === '/index.html') {
     const escapedSaveDir = activeSaveDir.replace(/\\/g, '\\\\');
 
-    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.writeHead(200, { 
+      'Content-Type': 'text/html; charset=utf-8',
+      'Cache-Control': 'no-cache, no-store, must-revalidate'
+    });
     res.end(`
 <!DOCTYPE html>
 <html lang="en">
