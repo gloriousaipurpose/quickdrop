@@ -425,8 +425,9 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
     <div class="modal-card">
       <h2 style="font-size:20px; font-weight:700; margin-bottom:8px;">Welcome to QuickDrop</h2>
       <p style="font-size:13px; color:var(--text-muted); margin-bottom:20px;">Please enter your name to personalize your file transfers.</p>
-      <input type="text" id="userNameInput" class="path-input" placeholder="Your Name (e.g. Alex)" style="text-align:center; font-size:15px; margin-bottom:20px; color:white;">
-      <button class="btn" onclick="saveUserName()">Continue to App</button>
+      <input type="text" id="userNameInput" class="path-input" placeholder="Your Name (e.g. Alex)" onkeydown="if(event.key==='Enter') saveUserName()" style="text-align:center; font-size:15px; margin-bottom:20px; color:white;">
+      <button type="button" class="btn" onclick="saveUserName()">Continue to App</button>
+      <div style="margin-top:14px; font-size:12px; color:var(--text-muted); cursor:pointer; text-decoration:underline;" onclick="skipOnboarding()">Skip for now &rarr;</div>
     </div>
   </div>
 
@@ -518,7 +519,15 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
 
   <script>
     const compliments = ['Awesome', 'Brilliant', 'Superstar', 'Wonderful', 'Legendary', 'Creative', 'Incredible', 'Fantastic', 'Amazing'];
-    let currentUserName = localStorage.getItem('quickdrop_user_name') || '';
+    
+    function getStoredUserName() {
+      try { return localStorage.getItem('quickdrop_user_name') || ''; } catch(e) { return ''; }
+    }
+    function setStoredUserName(val) {
+      try { localStorage.setItem('quickdrop_user_name', val); } catch(e) {}
+    }
+
+    let currentUserName = getStoredUserName();
     let lastSavedPath = '';
 
     // 3D Morphing Orb Engine
@@ -641,21 +650,33 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
     }
 
     function initUserOnboarding() {
+      const modal = document.getElementById('nameModal');
       if (!currentUserName) {
-        document.getElementById('nameModal').style.display = 'flex';
+        if (modal) modal.style.display = 'flex';
       } else {
-        document.getElementById('nameModal').style.display = 'none';
+        if (modal) modal.style.display = 'none';
         displayGreeting();
       }
     }
 
     function saveUserName() {
-      const inputVal = document.getElementById('userNameInput').value.trim();
-      if (!inputVal) return alert('Please enter your name.');
-      currentUserName = inputVal;
-      localStorage.setItem('quickdrop_user_name', currentUserName);
-      document.getElementById('nameModal').style.display = 'none';
+      const input = document.getElementById('userNameInput');
+      const inputVal = input ? input.value.trim() : '';
+      currentUserName = inputVal || 'Friend';
+      setStoredUserName(currentUserName);
+      closeNameModal();
       displayGreeting();
+    }
+
+    function skipOnboarding() {
+      currentUserName = 'Friend';
+      closeNameModal();
+      displayGreeting();
+    }
+
+    function closeNameModal() {
+      const modal = document.getElementById('nameModal');
+      if (modal) modal.style.display = 'none';
     }
 
     function displayGreeting() {
