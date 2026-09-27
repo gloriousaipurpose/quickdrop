@@ -1,6 +1,6 @@
 /**
  * QuickDrop Premium Minimalist File Sharing Server
- * Includes Target Folder Selection & iPhone/Android Wi-Fi Transfer Support
+ * Includes Full Path Displays, Direct PC File Downloads & Local/Cloud Wi-Fi Transfer Support
  */
 
 const http = require('http');
@@ -182,6 +182,43 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
     };
   }
 
+  // Direct File Binary Download Endpoint (Save received files onto PC)
+  if (req.method === 'GET' && req.url.startsWith('/download')) {
+    try {
+      const urlObj = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+      const fileId = urlObj.searchParams.get('id');
+      const item = transferHistory.find(h => h.id === fileId);
+
+      if (!item) {
+        res.writeHead(404, { 'Content-Type': 'text/plain' });
+        res.end('File not found in transfer history');
+        return;
+      }
+
+      const filePath = item.finalPath || item.tempPath;
+      if (!fs.existsSync(filePath)) {
+        res.writeHead(404, { 'Content-Type': 'text/plain' });
+        res.end('File missing on storage server');
+        return;
+      }
+
+      const stat = fs.statSync(filePath);
+      res.writeHead(200, {
+        'Content-Type': 'application/octet-stream',
+        'Content-Disposition': `attachment; filename="${encodeURIComponent(item.fileName)}"`,
+        'Content-Length': stat.size,
+        'Cache-Control': 'no-cache',
+      });
+
+      fs.createReadStream(filePath).pipe(res);
+      return;
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'text/plain' });
+      res.end('Download error: ' + e.message);
+      return;
+    }
+  }
+
   if (req.url === '/status' || req.url === '/ping') {
     res.writeHead(200, { 
       'Content-Type': 'application/json',
@@ -309,6 +346,7 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
         saved: fileItem.saved,
         savedPath: fileItem.finalPath || fileItem.tempPath,
         activeSaveDir: activeSaveDir,
+        fileId: fileItem.id,
         speed: `${speedMBps} MB/s`,
       }));
     });
@@ -368,9 +406,9 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
     .path-row { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
     .path-input { width: 100%; background: var(--bg); border: 1px solid var(--card-border); color: var(--accent); font-weight: 600; padding: 10px 12px; border-radius: 8px; font-size: 13px; outline: none; }
 
-    .btn { background: var(--primary); color: white; border: none; padding: 14px 20px; border-radius: 10px; font-weight: 600; font-size: 15px; cursor: pointer; width: 100%; transition: background 0.2s; }
+    .btn { background: var(--primary); color: white; border: none; padding: 14px 20px; border-radius: 10px; font-weight: 600; font-size: 15px; cursor: pointer; width: 100%; transition: background 0.2s; text-decoration: none; display: inline-block; text-align: center; }
     .btn:hover { background: var(--primary-hover); }
-    .btn-secondary { background: rgba(255, 255, 255, 0.06); color: var(--text); border: 1px solid var(--card-border); margin-bottom: 0; padding: 10px 14px; font-size: 13px; font-weight: 600; border-radius: 8px; cursor: pointer; transition: all 0.2s; }
+    .btn-secondary { background: rgba(255, 255, 255, 0.06); color: var(--text); border: 1px solid var(--card-border); margin-bottom: 0; padding: 10px 14px; font-size: 13px; font-weight: 600; border-radius: 8px; cursor: pointer; transition: all 0.2s; text-decoration: none; display: inline-block; }
     .btn-secondary:hover { background: rgba(255, 255, 255, 0.12); border-color: rgba(255, 255, 255, 0.2); }
     .btn-accent { background: rgba(16, 185, 129, 0.15); color: #10B981; border: 1px solid rgba(16, 185, 129, 0.3); }
     .btn-accent:hover { background: rgba(16, 185, 129, 0.25); }
@@ -384,7 +422,7 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
     /* Success Card */
     .success-card { background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 12px; padding: 14px; margin-top: 14px; display: none; text-align: left; }
     .success-title { font-weight: 700; color: #10B981; font-size: 14px; margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }
-    .success-path { font-size: 12px; color: var(--text); word-break: break-all; }
+    .success-path { font-size: 12px; color: var(--text); word-break: break-all; margin-bottom: 10px; }
 
     /* Name Onboarding Modal */
     .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(9, 13, 22, 0.9); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; z-index: 999; }
@@ -439,7 +477,8 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
       <!-- Success Card -->
       <div class="success-card" id="transferSuccessCard">
         <div class="success-title">🎉 Transfer Successful!</div>
-        <div class="success-path" id="successPathText">Files saved directly on PC.</div>
+        <div class="success-path" id="successPathText">Files received successfully.</div>
+        <div id="successDownloadContainer" style="margin-top:10px;"></div>
       </div>
     </div>
 
@@ -448,6 +487,13 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
         <h3 style="font-size:16px;">Receive Mode & Target Storage</h3>
         <button type="button" class="btn-secondary btn-accent" onclick="loadStatusAndHistory()" style="padding:6px 12px; font-size:12px; font-weight:700;">🔄 Refresh Status</button>
+      </div>
+
+      <!-- Instructions Banner -->
+      <div style="background:rgba(79,70,229,0.1); border:1px solid rgba(79,70,229,0.3); border-radius:10px; padding:12px; margin-bottom:16px; font-size:12px; line-height:1.5;">
+        <b>💡 How to Get Received Files onto Your PC:</b><br>
+        • <b>When using Render Cloud (quickdrop-vx8z.onrender.com):</b> Files uploaded from phone arrive on Render server. Tap <b style="color:#10B981;">📥 Download File to PC</b> on any received file below to save it directly to your computer's Downloads folder.<br>
+        • <b>When running locally on PC:</b> Connect your phone directly to your PC's IP address (e.g. <code style="color:var(--accent);">http://${localIp}:${PORT}</code>) over local Wi-Fi to save files directly into your Windows folder.
       </div>
 
       <!-- Target Storage Location Settings (Only in Receiving Section) -->
@@ -495,6 +541,7 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
 
     let currentUserName = getStoredUserName();
     let lastSavedPath = '';
+    let lastFileId = '';
 
     function initUserOnboarding() {
       const modal = document.getElementById('nameModal');
@@ -617,6 +664,7 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
       const sendBtn = document.getElementById('sendBtn');
       const successCard = document.getElementById('transferSuccessCard');
       const successPathText = document.getElementById('successPathText');
+      const dlContainer = document.getElementById('successDownloadContainer');
       
       if (track) track.style.display = 'block';
       if (successCard) successCard.style.display = 'none';
@@ -671,6 +719,7 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
 
           if (resData && resData.savedPath) {
             lastSavedPath = resData.savedPath;
+            if (resData.fileId) lastFileId = resData.fileId;
           }
         }
 
@@ -683,11 +732,13 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
         if (successCard) successCard.style.display = 'block';
         if (successPathText) {
           if (lastSavedPath) {
-            const displayP = formatDisplayPath(lastSavedPath);
-            successPathText.innerHTML = '<b>Saved Target Location:</b> <code style="color:#10B981;">' + escapeHtml(displayP) + '</code>';
+            successPathText.innerHTML = '<b>Full Saved Path:</b> <code style="color:#10B981; word-break:break-all;">' + escapeHtml(lastSavedPath) + '</code>';
           } else {
             successPathText.innerText = 'Saved in target QuickDrop folder.';
           }
+        }
+        if (dlContainer && lastFileId) {
+          dlContainer.innerHTML = '<a href="/download?id=' + encodeURIComponent(lastFileId) + '" download class="btn-secondary btn-accent" style="width:100%; font-size:13px;">📥 Download File to PC</a>';
         }
       } catch (err) {
         if (status) {
@@ -723,13 +774,14 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
             globalHistoryList = data.history;
             let html = '';
             data.history.forEach((item) => {
-              const savedLocation = item.finalPath || item.tempPath || data.activeSaveDir || '';
-              const displayLocation = formatDisplayPath(savedLocation);
-              html += '<div style="padding:12px; margin-bottom:10px; background:rgba(255,255,255,0.02); border:1px solid var(--card-border); border-radius:10px;">' +
-                      '<div style="font-weight:600; color:white; font-size:14px;">' + escapeHtml(item.fileName) + ' <span style="font-size:12px; color:var(--text-muted);">(' + (item.fileSize / 1024 / 1024).toFixed(1) + ' MB)</span></div>' +
-                      '<div style="font-size:12px; color:var(--accent); margin-top:4px;"><b>Saved to:</b> ' + escapeHtml(displayLocation) + '</div>' +
-                      '<div style="font-size:11px; color:var(--text-muted); margin-top:4px;">Received at ' + escapeHtml(item.time) + ' from ' + escapeHtml(item.senderName || 'Device') + '</div>' +
-                      '</div>';
+              const fullSavedPath = item.finalPath || item.tempPath || data.activeSaveDir || '';
+              html += '<div style="padding:14px; margin-bottom:12px; background:rgba(255,255,255,0.02); border:1px solid var(--card-border); border-radius:12px;">' +
+                      '<div style="font-weight:700; color:white; font-size:14px; margin-bottom:4px;">' + escapeHtml(item.fileName) + ' <span style="font-weight:400; font-size:12px; color:var(--text-muted);">(' + (item.fileSize / 1024 / 1024).toFixed(1) + ' MB)</span></div>' +
+                      '<div style="font-size:12px; color:var(--accent); word-break:break-all; margin-bottom:8px;"><b>Full Saved Path:</b> ' + escapeHtml(fullSavedPath) + '</div>' +
+                      '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">' +
+                      '<span style="font-size:11px; color:var(--text-muted);">' + escapeHtml(item.time) + ' &bull; ' + escapeHtml(item.senderName || 'Device') + '</span>' +
+                      '<a href="/download?id=' + encodeURIComponent(item.id) + '" download class="btn-secondary btn-accent" style="font-size:12px; padding:6px 12px;">📥 Download File to PC</a>' +
+                      '</div></div>';
             });
             histList.innerHTML = html;
           } else {
@@ -737,17 +789,6 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
           }
         }
       } catch (e) {}
-    }
-
-    function formatDisplayPath(pathStr) {
-      if (!pathStr) return 'QuickDrop Target Folder';
-      // Formats cloud Linux paths gracefully so users are not confused by container internals
-      if (pathStr.startsWith('/opt/render/')) {
-        const parts = pathStr.split('/');
-        const filename = parts.pop();
-        return 'QuickDrop Storage / ' + filename;
-      }
-      return pathStr;
     }
 
     function escapeHtml(str) {
