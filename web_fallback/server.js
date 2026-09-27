@@ -1,6 +1,6 @@
 /**
  * QuickDrop Premium Minimalist File Sharing Server
- * Includes 3D Morphing Glass Orb Dropzone & Folder Selection/Opening Support
+ * Includes Save Folder Selection/Opening & iPhone/Android Wi-Fi Transfer Support
  */
 
 const http = require('http');
@@ -218,7 +218,6 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
         const json = body ? JSON.parse(body) : {};
         const targetPath = json.path || activeSaveDir;
         if (process.platform === 'win32') {
-          // If path is a file, open parent folder and select file if possible
           if (fs.existsSync(targetPath) && fs.statSync(targetPath).isFile()) {
             exec(`explorer.exe /select,"${targetPath}"`);
           } else {
@@ -341,7 +340,7 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
     return;
   }
 
-  // Unified UI with 3D Morphing Glass Orb & Path Management
+  // Unified UI
   if (req.url === '/' || req.url === '/index.html') {
     const escapedSaveDir = activeSaveDir.replace(/\\/g, '\\\\');
 
@@ -402,12 +401,6 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
     .status-text { font-size: 14px; font-weight: 600; text-align: center; margin-top: 8px; }
     .info-row { display: flex; justify-content: space-between; font-size: 13px; padding: 8px 0; border-bottom: 1px solid var(--card-border); }
 
-    /* 3D Morphing Orb Dropzone Canvas */
-    .orb-wrapper { display: flex; flex-direction: column; align-items: center; justify-content: center; margin: 10px 0 20px 0; position: relative; }
-    #orbCanvas { width: 200px; height: 200px; cursor: grab; border-radius: 50%; }
-    #orbCanvas:active { cursor: grabbing; }
-    .orb-label { font-size: 12px; color: var(--text-muted); margin-top: 6px; font-weight: 500; }
-
     /* Success Card */
     .success-card { background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 12px; padding: 14px; margin-top: 14px; display: none; text-align: left; }
     .success-title { font-weight: 700; color: #10B981; font-size: 14px; margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }
@@ -451,11 +444,11 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
       </div>
       <div class="path-row">
         <input type="text" class="path-input" id="activeSaveDirDisplay" value="${escapedSaveDir}">
-        <button class="btn-secondary" onclick="triggerNativeFolderPicker()" title="Browse folder using Windows File Explorer">📂 Select Folder</button>
+        <button type="button" class="btn-secondary" onclick="triggerNativeFolderPicker()" title="Browse folder using Windows File Explorer">📂 Select Folder</button>
       </div>
       <div class="path-actions">
-        <button class="btn-secondary" style="flex:1;" onclick="updateSavePathFromInput()">Set Path</button>
-        <button class="btn-secondary btn-accent" style="flex:1;" onclick="openFolderOnPC()">🚀 Open Folder on PC</button>
+        <button type="button" class="btn-secondary" style="flex:1;" onclick="updateSavePathFromInput()">Set Path</button>
+        <button type="button" class="btn-secondary btn-accent" style="flex:1;" onclick="openFolderOnPC()">🚀 Open Folder on PC</button>
       </div>
     </div>
 
@@ -470,11 +463,11 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
       <p style="font-size:13px; color:var(--text-muted); margin-bottom:16px;">Direct high-speed transfer to PC (${pcName})</p>
       
       <input type="file" id="fileInput" multiple style="display:none;" onchange="onFilesPicked()">
-      <button class="btn btn-secondary" style="width:100%; padding:14px; margin-bottom:12px;" onclick="document.getElementById('fileInput').click()">Choose Files from Device (iPhone/Android/PC)</button>
+      <button type="button" class="btn btn-secondary" style="width:100%; padding:14px; margin-bottom:12px;" onclick="document.getElementById('fileInput').click()">Choose Files from Device (iPhone/Android/PC)</button>
 
       <div class="file-box" id="fileBox">No files selected</div>
 
-      <button class="btn" id="sendBtn" onclick="startUpload()">Send Selected Files</button>
+      <button type="button" class="btn" id="sendBtn" onclick="startUpload()">Send Selected Files</button>
 
       <div class="progress-track" id="progressTrack"><div class="progress-fill" id="progressFill"></div></div>
       <div class="status-text" id="statusText"></div>
@@ -483,13 +476,16 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
       <div class="success-card" id="transferSuccessCard">
         <div class="success-title">🎉 Transfer Successful</div>
         <div class="success-path" id="successPathText">Files saved directly on PC.</div>
-        <button class="btn-secondary btn-accent" style="width:100%;" onclick="openFolderOnPC(lastSavedPath)">📂 Open File Folder in PC Explorer</button>
+        <button type="button" class="btn-secondary btn-accent" style="width:100%;" onclick="openLastSavedFolder()">📂 Open File Folder in PC Explorer</button>
       </div>
     </div>
 
     <!-- Receive / History Panel -->
     <div class="panel" id="panelReceive" style="display:none;">
-      <h3 style="font-size:16px; margin-bottom:6px;">Receive Mode & Connection Status</h3>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+        <h3 style="font-size:16px;">Receive Mode & Connection Status</h3>
+        <button type="button" class="btn-secondary btn-accent" onclick="loadStatusAndHistory()" style="padding:6px 12px; font-size:12px; font-weight:700;">🔄 Refresh Status</button>
+      </div>
       <p style="font-size:13px; color:var(--text-muted); margin-bottom:16px;">Details about target Windows storage & transfer history.</p>
       
       <div class="info-row">
@@ -502,10 +498,10 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
       </div>
 
       <div style="margin-top:20px;">
-        <h4 style="font-size:14px; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center;">
-          <span>Recent Received Files</span>
-          <button class="btn-secondary" style="font-size:11px; padding:4px 8px;" onclick="loadStatusAndHistory()">Refresh</button>
-        </h4>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+          <h4 style="font-size:14px;">Recent Received Files</h4>
+          <button type="button" class="btn-secondary" style="font-size:12px; padding:6px 12px; font-weight:600;" onclick="loadStatusAndHistory()">🔄 Refresh History</button>
+        </div>
         <div id="historyList" style="font-size:13px; color:var(--text-muted);">Fetching history...</div>
       </div>
     </div>
@@ -513,6 +509,7 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
 
   <script>
     const compliments = ['Awesome', 'Brilliant', 'Superstar', 'Wonderful', 'Legendary', 'Creative', 'Incredible', 'Fantastic', 'Amazing'];
+    let globalHistoryList = [];
     
     function getStoredUserName() {
       try { return localStorage.getItem('quickdrop_user_name') || ''; } catch(e) { return ''; }
@@ -556,14 +553,22 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
 
     function displayGreeting() {
       const randomComp = compliments[Math.floor(Math.random() * compliments.length)];
-      document.getElementById('greetingText').innerHTML = 'Hi ' + randomComp + ' <span>' + currentUserName + '</span>';
+      const greetingEl = document.getElementById('greetingText');
+      if (greetingEl) {
+        greetingEl.innerHTML = 'Hi ' + randomComp + ' <span>' + escapeHtml(currentUserName) + '</span>';
+      }
     }
 
     function switchTab(mode) {
-      document.getElementById('tabSend').classList.toggle('active', mode === 'send');
-      document.getElementById('tabReceive').classList.toggle('active', mode === 'receive');
-      document.getElementById('panelSend').style.display = mode === 'send' ? 'block' : 'none';
-      document.getElementById('panelReceive').style.display = mode === 'receive' ? 'block' : 'none';
+      const tabSend = document.getElementById('tabSend');
+      const tabReceive = document.getElementById('tabReceive');
+      const panelSend = document.getElementById('panelSend');
+      const panelReceive = document.getElementById('panelReceive');
+
+      if (tabSend) tabSend.classList.toggle('active', mode === 'send');
+      if (tabReceive) tabReceive.classList.toggle('active', mode === 'receive');
+      if (panelSend) panelSend.style.display = mode === 'send' ? 'block' : 'none';
+      if (panelReceive) panelReceive.style.display = mode === 'receive' ? 'block' : 'none';
       
       if (mode === 'receive') {
         loadStatusAndHistory();
@@ -576,7 +581,8 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
         const res = await fetch('/api/select-folder', { method: 'POST' });
         const data = await res.json();
         if (data.success && data.activeSaveDir) {
-          document.getElementById('activeSaveDirDisplay').value = data.activeSaveDir;
+          const display = document.getElementById('activeSaveDirDisplay');
+          if (display) display.value = data.activeSaveDir;
           alert('Folder selected successfully: ' + data.activeSaveDir);
         } else if (data.error) {
           alert('Folder selection: ' + data.error);
@@ -588,7 +594,8 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
 
     // Update path manually from text input
     async function updateSavePathFromInput() {
-      const pathVal = document.getElementById('activeSaveDirDisplay').value;
+      const display = document.getElementById('activeSaveDirDisplay');
+      const pathVal = display ? display.value : '';
       try {
         const res = await fetch('/api/settings', {
           method: 'POST',
@@ -606,7 +613,8 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
 
     // Open target folder in Windows File Explorer
     async function openFolderOnPC(specificPath) {
-      const target = specificPath || document.getElementById('activeSaveDirDisplay').value;
+      const display = document.getElementById('activeSaveDirDisplay');
+      const target = specificPath || (display ? display.value : '');
       try {
         const res = await fetch('/api/open-folder', {
           method: 'POST',
@@ -624,26 +632,38 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
       }
     }
 
+    function openLastSavedFolder() {
+      openFolderOnPC(lastSavedPath);
+    }
+
+    function openHistoryItem(index) {
+      if (globalHistoryList && globalHistoryList[index]) {
+        const item = globalHistoryList[index];
+        const target = item.finalPath || item.tempPath || '';
+        openFolderOnPC(target);
+      }
+    }
+
     function onFilesPicked() {
       const input = document.getElementById('fileInput');
       const box = document.getElementById('fileBox');
-      if (input.files && input.files.length > 0) {
+      if (input && input.files && input.files.length > 0) {
         let total = 0;
         let html = '<b>Selected (' + input.files.length + ' files):</b><br>';
         for (let i = 0; i < input.files.length; i++) {
           total += input.files[i].size;
-          html += '&bull; ' + input.files[i].name + ' (' + (input.files[i].size / 1024 / 1024).toFixed(1) + ' MB)<br>';
+          html += '&bull; ' + escapeHtml(input.files[i].name) + ' (' + (input.files[i].size / 1024 / 1024).toFixed(1) + ' MB)<br>';
         }
         html += '<br><b>Total Size: ' + (total / 1024 / 1024).toFixed(1) + ' MB</b>';
         box.innerHTML = html;
-      } else {
+      } else if (box) {
         box.innerHTML = 'No files selected';
       }
     }
 
     async function startUpload() {
       const input = document.getElementById('fileInput');
-      if (!input.files || !input.files.length) {
+      if (!input || !input.files || !input.files.length) {
         alert('Please click [Choose Files from Device] first.');
         return;
       }
@@ -656,10 +676,12 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
       const successCard = document.getElementById('transferSuccessCard');
       const successPathText = document.getElementById('successPathText');
       
-      track.style.display = 'block';
-      successCard.style.display = 'none';
-      sendBtn.disabled = true;
-      sendBtn.style.opacity = '0.5';
+      if (track) track.style.display = 'block';
+      if (successCard) successCard.style.display = 'none';
+      if (sendBtn) {
+        sendBtn.disabled = true;
+        sendBtn.style.opacity = '0.5';
+      }
 
       let totalSize = files.reduce((acc, f) => acc + f.size, 0);
       let totalUploaded = 0;
@@ -668,8 +690,10 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
       try {
         for (let i = 0; i < files.length; i++) {
           const file = files[i];
-          status.innerText = 'Transferring [' + (i + 1) + '/' + files.length + ']: ' + file.name;
-          status.style.color = '#F3F4F6';
+          if (status) {
+            status.innerText = 'Transferring [' + (i + 1) + '/' + files.length + ']: ' + file.name;
+            status.style.color = '#F3F4F6';
+          }
 
           const resData = await new Promise((resolve, reject) => {
             const xhr = new XMLHttpRequest();
@@ -689,8 +713,8 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
                 const elapsedSec = (Date.now() - startTime) / 1000;
                 const speedMBps = elapsedSec > 0 ? ((totalUploaded / 1024 / 1024) / elapsedSec).toFixed(1) : 0;
 
-                fill.style.width = pct + '%';
-                status.innerText = 'Transferring: ' + pct + '% (' + speedMBps + ' MB/s)';
+                if (fill) fill.style.width = pct + '%';
+                if (status) status.innerText = 'Transferring: ' + pct + '% (' + speedMBps + ' MB/s)';
               }
             };
 
@@ -708,23 +732,30 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
           }
         }
 
-        fill.style.width = '100%';
-        status.innerText = 'Transfer Complete!';
-        status.style.color = '#10B981';
+        if (fill) fill.style.width = '100%';
+        if (status) {
+          status.innerText = 'Transfer Complete!';
+          status.style.color = '#10B981';
+        }
 
-        // Show detailed path & direct open button
-        successCard.style.display = 'block';
-        if (lastSavedPath) {
-          successPathText.innerHTML = '<b>Saved Path on PC:</b><br><code style="color:#10B981;">' + lastSavedPath + '</code>';
-        } else {
-          successPathText.innerText = 'Saved in active QuickDrop folder on PC.';
+        if (successCard) successCard.style.display = 'block';
+        if (successPathText) {
+          if (lastSavedPath) {
+            successPathText.innerHTML = '<b>Saved Path on PC:</b><br><code style="color:#10B981;">' + escapeHtml(lastSavedPath) + '</code>';
+          } else {
+            successPathText.innerText = 'Saved in active QuickDrop folder on PC.';
+          }
         }
       } catch (err) {
-        status.innerText = 'Error: ' + err.message;
-        status.style.color = '#EF4444';
+        if (status) {
+          status.innerText = 'Error: ' + err.message;
+          status.style.color = '#EF4444';
+        }
       } finally {
-        sendBtn.disabled = false;
-        sendBtn.style.opacity = '1.0';
+        if (sendBtn) {
+          sendBtn.disabled = false;
+          sendBtn.style.opacity = '1.0';
+        }
       }
     }
 
@@ -734,31 +765,46 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
         const data = await res.json();
         
         if (data.activeSaveDir) {
-          document.getElementById('activeSaveDirDisplay').value = data.activeSaveDir;
+          const display = document.getElementById('activeSaveDirDisplay');
+          if (display) display.value = data.activeSaveDir;
         }
 
         if (data.connectedClient) {
-          document.getElementById('connText').innerText = 'Connected: ' + data.connectedClient.name;
+          const connText = document.getElementById('connText');
+          if (connText) connText.innerText = 'Connected: ' + data.connectedClient.name;
         }
 
         const histList = document.getElementById('historyList');
-        if (data.history && data.history.length > 0) {
-          let html = '';
-          data.history.forEach(item => {
-            const savedLocation = item.finalPath || item.tempPath || data.activeSaveDir;
-            html += '<div style="padding:10px; margin-bottom:8px; background:rgba(255,255,255,0.02); border:1px solid var(--card-border); border-radius:8px;">' +
-                    '<div style="font-weight:600; color:white;">' + item.fileName + ' (' + (item.fileSize / 1024 / 1024).toFixed(1) + ' MB)</div>' +
-                    '<div style="font-size:11px; color:var(--text-muted); margin-top:2px;">Saved to: <code style="color:var(--accent);">' + savedLocation + '</code></div>' +
-                    '<div style="display:flex; justify-content:space-between; align-items:center; margin-top:6px;">' +
-                    '<span style="font-size:11px; color:var(--text-muted);">' + item.time + ' &bull; ' + (item.senderName || 'Client') + '</span>' +
-                    '<button class="btn-secondary" style="font-size:11px; padding:3px 8px;" onclick="openFolderOnPC(\'' + savedLocation.replace(/\\\\/g, '\\\\\\\\') + '\')">📂 Open</button>' +
-                    '</div></div>';
-          });
-          histList.innerHTML = html;
-        } else {
-          histList.innerHTML = 'No files received yet.';
+        if (histList) {
+          if (data.history && data.history.length > 0) {
+            globalHistoryList = data.history;
+            let html = '';
+            data.history.forEach((item, idx) => {
+              const savedLocation = item.finalPath || item.tempPath || data.activeSaveDir || '';
+              html += '<div style="padding:10px; margin-bottom:8px; background:rgba(255,255,255,0.02); border:1px solid var(--card-border); border-radius:8px;">' +
+                      '<div style="font-weight:600; color:white;">' + escapeHtml(item.fileName) + ' (' + (item.fileSize / 1024 / 1024).toFixed(1) + ' MB)</div>' +
+                      '<div style="font-size:11px; color:var(--text-muted); margin-top:2px;">Saved to: <code style="color:var(--accent);">' + escapeHtml(savedLocation) + '</code></div>' +
+                      '<div style="display:flex; justify-content:space-between; align-items:center; margin-top:6px;">' +
+                      '<span style="font-size:11px; color:var(--text-muted);">' + escapeHtml(item.time) + ' &bull; ' + escapeHtml(item.senderName || 'Client') + '</span>' +
+                      '<button type="button" class="btn-secondary" style="font-size:11px; padding:3px 8px;" onclick="openHistoryItem(' + idx + ')">📂 Open</button>' +
+                      '</div></div>';
+            });
+            histList.innerHTML = html;
+          } else {
+            histList.innerHTML = 'No files received yet.';
+          }
         }
       } catch (e) {}
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
     }
 
     // Initialize Onboarding & Status
