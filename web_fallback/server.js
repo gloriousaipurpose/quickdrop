@@ -466,12 +466,6 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
 
     <!-- Send Panel (iPhone / Mobile / Browser to Windows) -->
     <div class="panel" id="panelSend">
-      <!-- 3D Morphing Glass Orb Component -->
-      <div class="orb-wrapper">
-        <canvas id="orbCanvas" width="200" height="200"></canvas>
-        <div class="orb-label">Interactive 3D Glass Orb — Drag to Rotate</div>
-      </div>
-
       <h3 style="font-size:16px; margin-bottom:6px;">Select Files to Share</h3>
       <p style="font-size:13px; color:var(--text-muted); margin-bottom:16px;">Direct high-speed transfer to PC (${pcName})</p>
       
@@ -529,125 +523,6 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
 
     let currentUserName = getStoredUserName();
     let lastSavedPath = '';
-
-    // 3D Morphing Orb Engine
-    let orbSpeedFactor = 1.0;
-    let orbHue = 240; // Indigo
-    let rotationAngleX = 0;
-    let rotationAngleY = 0;
-    let isDragging = false;
-    let lastMouseX = 0, lastMouseY = 0;
-
-    function initOrb() {
-      const canvas = document.getElementById('orbCanvas');
-      const ctx = canvas.getContext('2d');
-      const cx = canvas.width / 2;
-      const cy = canvas.height / 2;
-      const radius = 75;
-      let time = 0;
-
-      // Mouse/Touch drag rotation controls
-      canvas.addEventListener('mousedown', (e) => {
-        isDragging = true;
-        lastMouseX = e.clientX;
-        lastMouseY = e.clientY;
-      });
-      window.addEventListener('mousemove', (e) => {
-        if (isDragging) {
-          const dx = e.clientX - lastMouseX;
-          const dy = e.clientY - lastMouseY;
-          rotationAngleY += dx * 0.01;
-          rotationAngleX += dy * 0.01;
-          lastMouseX = e.clientX;
-          lastMouseY = e.clientY;
-        }
-      });
-      window.addEventListener('mouseup', () => isDragging = false);
-
-      canvas.addEventListener('touchstart', (e) => {
-        if (e.touches.length > 0) {
-          isDragging = true;
-          lastMouseX = e.touches[0].clientX;
-          lastMouseY = e.touches[0].clientY;
-        }
-      });
-      window.addEventListener('touchmove', (e) => {
-        if (isDragging && e.touches.length > 0) {
-          const dx = e.touches[0].clientX - lastMouseX;
-          const dy = e.touches[0].clientY - lastMouseY;
-          rotationAngleY += dx * 0.01;
-          rotationAngleX += dy * 0.01;
-          lastMouseX = e.touches[0].clientX;
-          lastMouseY = e.touches[0].clientY;
-        }
-      });
-      window.addEventListener('touchend', () => isDragging = false);
-
-      function renderOrb() {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        time += 0.03 * orbSpeedFactor;
-        if (!isDragging) {
-          rotationAngleY += 0.005 * orbSpeedFactor;
-        }
-
-        // Draw outer glass sphere gradient
-        const outerGrd = ctx.createRadialGradient(cx - 20, cy - 20, 10, cx, cy, radius);
-        outerGrd.addColorStop(0, 'hsla(' + orbHue + ', 80%, 75%, 0.8)');
-        outerGrd.addColorStop(0.5, 'hsla(' + orbHue + ', 75%, 55%, 0.3)');
-        outerGrd.addColorStop(1, 'hsla(' + orbHue + ', 90%, 35%, 0.05)');
-
-        ctx.save();
-        ctx.beginPath();
-        ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-        ctx.fillStyle = outerGrd;
-        ctx.shadowColor = 'hsla(' + orbHue + ', 90%, 60%, 0.5)';
-        ctx.shadowBlur = 25 * orbSpeedFactor;
-        ctx.fill();
-
-        // Liquid wave sloshing inside orb
-        ctx.beginPath();
-        ctx.arc(cx, cy, radius - 4, 0, Math.PI * 2);
-        ctx.clip();
-
-        ctx.beginPath();
-        const waveHeight = 12 * Math.sin(time);
-        ctx.moveTo(cx - radius, cy + waveHeight);
-
-        for (let x = -radius; x <= radius; x += 5) {
-          const y = Math.sin((x * 0.05) + time * 2 + rotationAngleY) * (8 * orbSpeedFactor);
-          ctx.lineTo(cx + x, cy + 20 + y + Math.cos(rotationAngleX) * 10);
-        }
-        ctx.lineTo(cx + radius, cy + radius);
-        ctx.lineTo(cx - radius, cy + radius);
-        ctx.closePath();
-
-        const liquidGrd = ctx.createLinearGradient(0, cy, 0, cy + radius);
-        liquidGrd.addColorStop(0, 'hsla(' + orbHue + ', 90%, 60%, 0.6)');
-        liquidGrd.addColorStop(1, 'hsla(' + (orbHue + 20) + ', 90%, 40%, 0.8)');
-        ctx.fillStyle = liquidGrd;
-        ctx.fill();
-
-        // 3D Glass highlights and specular reflections
-        ctx.beginPath();
-        ctx.ellipse(cx - 25, cy - 30, 20, 10, -Math.PI / 4, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.35)';
-        ctx.fill();
-
-        ctx.restore();
-        requestAnimationFrame(renderOrb);
-      }
-      renderOrb();
-    }
-
-    function setOrbActive(isActive) {
-      if (isActive) {
-        orbSpeedFactor = 2.5;
-        orbHue = 160; // Emerald Green pulse
-      } else {
-        orbSpeedFactor = 1.0;
-        orbHue = 240; // Indigo
-      }
-    }
 
     function initUserOnboarding() {
       const modal = document.getElementById('nameModal');
@@ -785,7 +660,6 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
       successCard.style.display = 'none';
       sendBtn.disabled = true;
       sendBtn.style.opacity = '0.5';
-      setOrbActive(true);
 
       let totalSize = files.reduce((acc, f) => acc + f.size, 0);
       let totalUploaded = 0;
@@ -851,7 +725,6 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
       } finally {
         sendBtn.disabled = false;
         sendBtn.style.opacity = '1.0';
-        setTimeout(() => setOrbActive(false), 2000);
       }
     }
 
@@ -888,8 +761,7 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
       } catch (e) {}
     }
 
-    // Initialize Orb & Onboarding
-    initOrb();
+    // Initialize Onboarding & Status
     initUserOnboarding();
     loadStatusAndHistory();
   </script>
