@@ -519,8 +519,8 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
         <span style="color:#10B981; font-weight:700;">🛡️ 100% Lossless Quality:</span> Streamed bitwise — zero image compression, zero re-encoding.
       </div>
 
-      <input type="file" id="fileInput" multiple style="display:none;" onchange="onFilesPicked()">
-      <button type="button" class="btn btn-secondary" style="width:100%; padding:14px; margin-bottom:12px;" onclick="document.getElementById('fileInput').click()">Choose Files from Device (iPhone/Android/PC)</button>
+      <label for="fileInput" class="btn btn-secondary" style="width:100%; padding:14px; margin-bottom:12px; display:block; cursor:pointer; text-align:center;">Choose Files from Device (iPhone/Android/PC)</label>
+      <input type="file" id="fileInput" multiple onchange="onFilesPicked()" style="opacity:0; position:absolute; z-index:-1; width:1px; height:1px;">
 
       <div class="file-box" id="fileBox">No files selected</div>
 
