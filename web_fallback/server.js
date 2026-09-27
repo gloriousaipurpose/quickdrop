@@ -1,6 +1,6 @@
 /**
  * QuickDrop Premium Minimalist File Sharing Server
- * Features: Name Onboarding, Random Unisex Compliments, Auto Save & Multi-File Transfer
+ * Includes 3D Morphing Glass Orb Dropzone (Option 2)
  */
 
 const http = require('http');
@@ -90,9 +90,7 @@ try {
       if (data.type === 'PING') broadcastPresence();
     } catch (e) {}
   });
-} catch (e) {
-  // Graceful fallback for cloud hosting without raw UDP broadcast
-}
+} catch (e) {}
 
 function moveTempToFinal(tempFilePath, fileName, targetFolder) {
   if (!fs.existsSync(targetFolder)) {
@@ -243,7 +241,7 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
     return;
   }
 
-  // Unified Premium Minimalist UI with Name Onboarding & Unisex Compliment Greeting
+  // Unified UI with 3D Morphing Glass Orb (Option 2)
   if (req.url === '/' || req.url === '/index.html') {
     const escapedSaveDir = activeSaveDir.replace(/\\/g, '\\\\');
 
@@ -267,8 +265,8 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
       --text-muted: #9CA3AF;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); padding: 24px 16px; min-height: 100vh; display: flex; flex-direction: column; align-items: center; }
-    .container { width: 100%; max-width: 520px; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); padding: 24px 16px; min-height: 100vh; display: flex; flex-direction: column; align-items: center; overflow-x: hidden; }
+    .container { width: 100%; max-width: 520px; z-index: 2; position: relative; }
     .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--card-border); }
     .brand-col { display: flex; flex-direction: column; }
     .brand { font-size: 20px; font-weight: 700; letter-spacing: -0.5px; }
@@ -279,7 +277,7 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
     .tabs { display: flex; background: var(--card); padding: 4px; border-radius: 12px; border: 1px solid var(--card-border); margin-bottom: 20px; }
     .tab { flex: 1; padding: 12px; text-align: center; font-size: 14px; font-weight: 600; color: var(--text-muted); border-radius: 8px; cursor: pointer; transition: all 0.2s; }
     .tab.active { background: var(--primary); color: white; }
-    .panel { background: var(--card); border-radius: 16px; border: 1px solid var(--card-border); padding: 24px; margin-bottom: 20px; }
+    .panel { background: var(--card); border-radius: 16px; border: 1px solid var(--card-border); padding: 24px; margin-bottom: 20px; backdrop-filter: blur(10px); }
     .btn { background: var(--primary); color: white; border: none; padding: 14px 20px; border-radius: 10px; font-weight: 600; font-size: 15px; cursor: pointer; width: 100%; transition: background 0.2s; }
     .btn:hover { background: var(--primary-hover); }
     .btn-secondary { background: rgba(255, 255, 255, 0.05); color: var(--text); border: 1px solid var(--card-border); margin-bottom: 12px; }
@@ -291,6 +289,12 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
     .info-row { display: flex; justify-content: space-between; font-size: 13px; padding: 8px 0; border-bottom: 1px solid var(--card-border); }
     .path-input { width: 100%; background: var(--bg); border: 1px solid var(--card-border); color: white; padding: 10px; border-radius: 8px; margin: 8px 0 16px 0; font-size: 13px; }
 
+    /* 3D Morphing Orb Dropzone Canvas */
+    .orb-wrapper { display: flex; flex-direction: column; align-items: center; justify-content: center; margin: 10px 0 20px 0; position: relative; }
+    #orbCanvas { width: 200px; height: 200px; cursor: grab; border-radius: 50%; }
+    #orbCanvas:active { cursor: grabbing; }
+    .orb-label { font-size: 12px; color: var(--text-muted); margin-top: 6px; font-weight: 500; }
+
     /* Name Onboarding Modal */
     .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(9, 13, 22, 0.9); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; z-index: 999; }
     .modal-card { background: var(--card); border: 1px solid var(--card-border); border-radius: 20px; padding: 32px 24px; width: 90%; max-width: 400px; text-align: center; }
@@ -298,11 +302,11 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
 </head>
 <body>
 
-  <!-- Name Onboarding Modal -->
+  <!-- Name Modal -->
   <div class="modal-overlay" id="nameModal">
     <div class="modal-card">
       <h2 style="font-size:20px; font-weight:700; margin-bottom:8px;">Welcome to QuickDrop</h2>
-      <p style="font-size:13px; color:var(--text-muted); margin-bottom:20px;">Please enter your name to personalize your file sharing experience.</p>
+      <p style="font-size:13px; color:var(--text-muted); margin-bottom:20px;">Please enter your name to personalize your experience.</p>
       <input type="text" id="userNameInput" class="path-input" placeholder="Your Name (e.g. Alex)" style="text-align:center; font-size:15px; margin-bottom:20px;">
       <button class="btn" onclick="saveUserName()">Continue to App</button>
     </div>
@@ -327,8 +331,14 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
 
     <!-- Send Panel -->
     <div class="panel" id="panelSend">
+      <!-- 3D Morphing Glass Orb Component -->
+      <div class="orb-wrapper">
+        <canvas id="orbCanvas" width="200" height="200"></canvas>
+        <div class="orb-label">Interactive 3D Glass Orb — Drag to Rotate</div>
+      </div>
+
       <h3 style="font-size:16px; margin-bottom:6px;">Select Files to Share</h3>
-      <p style="font-size:13px; color:var(--text-muted); margin-bottom:16px;">Direct high-speed stream to ${pcName}</p>
+      <p style="font-size:13px; color:var(--text-muted); margin-bottom:16px;">Direct high-speed transfer to ${pcName}</p>
       
       <input type="file" id="fileInput" multiple style="display:none;" onchange="onFilesPicked()">
       <button class="btn btn-secondary" onclick="document.getElementById('fileInput').click()">Choose Files from Device</button>
@@ -369,12 +379,127 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
   </div>
 
   <script>
-    const compliments = [
-      'Awesome', 'Brilliant', 'Superstar', 'Wonderful', 
-      'Legendary', 'Creative', 'Incredible', 'Fantastic', 'Amazing'
-    ];
-
+    const compliments = ['Awesome', 'Brilliant', 'Superstar', 'Wonderful', 'Legendary', 'Creative', 'Incredible', 'Fantastic', 'Amazing'];
     let currentUserName = localStorage.getItem('quickdrop_user_name') || '';
+
+    // 3D Morphing Orb Engine
+    let orbSpeedFactor = 1.0;
+    let orbHue = 240; // Indigo
+    let rotationAngleX = 0;
+    let rotationAngleY = 0;
+    let isDragging = false;
+    let lastMouseX = 0, lastMouseY = 0;
+
+    function initOrb() {
+      const canvas = document.getElementById('orbCanvas');
+      const ctx = canvas.getContext('2d');
+      const cx = canvas.width / 2;
+      const cy = canvas.height / 2;
+      const radius = 75;
+      let time = 0;
+
+      // Mouse drag rotation controls
+      canvas.addEventListener('mousedown', (e) => {
+        isDragging = true;
+        lastMouseX = e.clientX;
+        lastMouseY = e.clientY;
+      });
+      window.addEventListener('mousemove', (e) => {
+        if (isDragging) {
+          const dx = e.clientX - lastMouseX;
+          const dy = e.clientY - lastMouseY;
+          rotationAngleY += dx * 0.01;
+          rotationAngleX += dy * 0.01;
+          lastMouseX = e.clientX;
+          lastMouseY = e.clientY;
+        }
+      });
+      window.addEventListener('mouseup', () => isDragging = false);
+
+      canvas.addEventListener('touchstart', (e) => {
+        if (e.touches.length > 0) {
+          isDragging = true;
+          lastMouseX = e.touches[0].clientX;
+          lastMouseY = e.touches[0].clientY;
+        }
+      });
+      window.addEventListener('touchmove', (e) => {
+        if (isDragging && e.touches.length > 0) {
+          const dx = e.touches[0].clientX - lastMouseX;
+          const dy = e.touches[0].clientY - lastMouseY;
+          rotationAngleY += dx * 0.01;
+          rotationAngleX += dy * 0.01;
+          lastMouseX = e.touches[0].clientX;
+          lastMouseY = e.touches[0].clientY;
+        }
+      });
+      window.addEventListener('touchend', () => isDragging = false);
+
+      function renderOrb() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        time += 0.03 * orbSpeedFactor;
+        if (!isDragging) {
+          rotationAngleY += 0.005 * orbSpeedFactor;
+        }
+
+        // Draw outer glass sphere gradient
+        const outerGrd = ctx.createRadialGradient(cx - 20, cy - 20, 10, cx, cy, radius);
+        outerGrd.addColorStop(0, \`hsla(\${orbHue}, 80%, 75%, 0.8)\`);
+        outerGrd.addColorStop(0.5, \`hsla(\${orbHue}, 75%, 55%, 0.3)\`);
+        outerGrd.addColorStop(1, \`hsla(\${orbHue}, 90%, 35%, 0.05)\`);
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+        ctx.fillStyle = outerGrd;
+        ctx.shadowColor = \`hsla(\${orbHue}, 90%, 60%, 0.5)\`;
+        ctx.shadowBlur = 25 * orbSpeedFactor;
+        ctx.fill();
+
+        // Liquid wave sloshing inside orb
+        ctx.beginPath();
+        ctx.arc(cx, cy, radius - 4, 0, Math.PI * 2);
+        ctx.clip();
+
+        ctx.beginPath();
+        const waveHeight = 12 * Math.sin(time);
+        ctx.moveTo(cx - radius, cy + waveHeight);
+
+        for (let x = -radius; x <= radius; x += 5) {
+          const y = Math.sin((x * 0.05) + time * 2 + rotationAngleY) * (8 * orbSpeedFactor);
+          ctx.lineTo(cx + x, cy + 20 + y + Math.cos(rotationAngleX) * 10);
+        }
+        ctx.lineTo(cx + radius, cy + radius);
+        ctx.lineTo(cx - radius, cy + radius);
+        ctx.closePath();
+
+        const liquidGrd = ctx.createLinearGradient(0, cy, 0, cy + radius);
+        liquidGrd.addColorStop(0, \`hsla(\${orbHue}, 90%, 60%, 0.6)\`);
+        liquidGrd.addColorStop(1, \`hsla(\${orbHue + 20}, 90%, 40%, 0.8)\`);
+        ctx.fillStyle = liquidGrd;
+        ctx.fill();
+
+        // 3D Glass highlights and specular reflections
+        ctx.beginPath();
+        ctx.ellipse(cx - 25, cy - 30, 20, 10, -Math.PI / 4, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.35)';
+        ctx.fill();
+
+        ctx.restore();
+        requestAnimationFrame(renderOrb);
+      }
+      renderOrb();
+    }
+
+    function setOrbActive(isActive) {
+      if (isActive) {
+        orbSpeedFactor = 2.5;
+        orbHue = 160; // Emerald Green pulse
+      } else {
+        orbSpeedFactor = 1.0;
+        orbHue = 240; // Indigo
+      }
+    }
 
     function initUserOnboarding() {
       if (!currentUserName) {
@@ -443,6 +568,7 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
       track.style.display = 'block';
       sendBtn.disabled = true;
       sendBtn.style.opacity = '0.5';
+      setOrbActive(true);
 
       let totalSize = files.reduce((acc, f) => acc + f.size, 0);
       let totalUploaded = 0;
@@ -495,6 +621,7 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
       } finally {
         sendBtn.disabled = false;
         sendBtn.style.opacity = '1.0';
+        setTimeout(() => setOrbActive(false), 2000);
       }
     }
 
@@ -538,7 +665,8 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
       } catch (e) {}
     }
 
-    // Initialize onboarding & greeting
+    // Initialize Orb & Onboarding
+    initOrb();
     initUserOnboarding();
     loadStatusAndHistory();
   </script>
