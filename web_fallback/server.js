@@ -1,6 +1,6 @@
 /**
  * QuickDrop Premium Minimalist File Sharing Server
- * Includes Full Path Displays, Direct PC File Downloads & Local/Cloud Wi-Fi Transfer Support
+ * Includes Select All & Batch File Downloads, Full Path Displays & 100% Lossless Quality Transfer
  */
 
 const http = require('http');
@@ -182,7 +182,7 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
     };
   }
 
-  // Direct File Binary Download Endpoint (Save received files onto PC)
+  // Direct Lossless File Binary Download Endpoint
   if (req.method === 'GET' && req.url.startsWith('/download')) {
     try {
       const urlObj = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
@@ -288,7 +288,7 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
     return;
   }
 
-  // Upload Endpoint (Supports iPhone & Android to Windows transfers)
+  // Lossless Binary Upload Endpoint (Raw byte-for-byte stream, zero compression)
   if (req.method === 'POST' && req.url === '/upload') {
     const rawFileName = req.headers['x-file-name'] || 'file.dat';
     const fileName = decodeURIComponent(rawFileName);
@@ -342,7 +342,7 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({
         success: true,
-        message: 'File received successfully',
+        message: 'File received successfully (100% Lossless)',
         saved: fileItem.saved,
         savedPath: fileItem.finalPath || fileItem.tempPath,
         activeSaveDir: activeSaveDir,
@@ -462,8 +462,13 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
     <!-- Send Panel (iPhone / Mobile / Browser to Windows) -->
     <div class="panel" id="panelSend">
       <h3 style="font-size:16px; margin-bottom:6px;">Select Files to Share</h3>
-      <p style="font-size:13px; color:var(--text-muted); margin-bottom:16px;">Direct high-speed transfer to PC (${pcName})</p>
+      <p style="font-size:13px; color:var(--text-muted); margin-bottom:12px;">Direct high-speed transfer to PC (${pcName})</p>
       
+      <!-- Lossless Quality Notice -->
+      <div style="font-size:12px; color:var(--text-muted); margin-bottom:16px; display:flex; align-items:center; gap:6px;">
+        <span style="color:#10B981; font-weight:700;">🛡️ 100% Lossless Quality:</span> Streamed bitwise — zero image compression, zero re-encoding.
+      </div>
+
       <input type="file" id="fileInput" multiple style="display:none;" onchange="onFilesPicked()">
       <button type="button" class="btn btn-secondary" style="width:100%; padding:14px; margin-bottom:12px;" onclick="document.getElementById('fileInput').click()">Choose Files from Device (iPhone/Android/PC)</button>
 
@@ -476,7 +481,7 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
 
       <!-- Success Card -->
       <div class="success-card" id="transferSuccessCard">
-        <div class="success-title">🎉 Transfer Successful!</div>
+        <div class="success-title">🎉 Transfer Successful! (100% Lossless)</div>
         <div class="success-path" id="successPathText">Files received successfully.</div>
         <div id="successDownloadContainer" style="margin-top:10px;"></div>
       </div>
@@ -492,8 +497,8 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
       <!-- Instructions Banner -->
       <div style="background:rgba(79,70,229,0.1); border:1px solid rgba(79,70,229,0.3); border-radius:10px; padding:12px; margin-bottom:16px; font-size:12px; line-height:1.5;">
         <b>💡 How to Get Received Files onto Your PC:</b><br>
-        • <b>When using Render Cloud (quickdrop-vx8z.onrender.com):</b> Files uploaded from phone arrive on Render server. Tap <b style="color:#10B981;">📥 Download File to PC</b> on any received file below to save it directly to your computer's Downloads folder.<br>
-        • <b>When running locally on PC:</b> Connect your phone directly to your PC's IP address (e.g. <code style="color:var(--accent);">http://${localIp}:${PORT}</code>) over local Wi-Fi to save files directly into your Windows folder.
+        • <b>When using Render Cloud (quickdrop-vx8z.onrender.com):</b> Select any or all files below and click <b style="color:#10B981;">📥 Download Selected Files</b> to save them to your PC's Downloads folder.<br>
+        • <b>When running locally on PC:</b> Connect your phone directly to your PC's IP address (<code style="color:var(--accent);">http://${localIp}:${PORT}</code>) over local Wi-Fi to save files directly into your Windows folder.
       </div>
 
       <!-- Target Storage Location Settings (Only in Receiving Section) -->
@@ -523,6 +528,15 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
           <h4 style="font-size:14px;">Recent Received Files</h4>
           <button type="button" class="btn-secondary" style="font-size:12px; padding:6px 12px; font-weight:600;" onclick="loadStatusAndHistory()">🔄 Refresh History</button>
         </div>
+
+        <!-- Select All & Batch Download Bar -->
+        <div id="batchActionBox" style="display:none; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.03); border:1px solid var(--card-border); border-radius:10px; padding:10px 14px; margin-bottom:14px;">
+          <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:600; cursor:pointer;">
+            <input type="checkbox" id="selectAllCb" onchange="toggleSelectAll(this)" style="width:16px; height:16px; cursor:pointer;"> Select All Files
+          </label>
+          <button type="button" class="btn-secondary btn-accent" style="font-size:12px; padding:6px 14px; font-weight:700;" onclick="downloadAllSelected()">📥 Download Selected Files</button>
+        </div>
+
         <div id="historyList" style="font-size:13px; color:var(--text-muted);">Fetching history...</div>
       </div>
     </div>
@@ -633,6 +647,33 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
       }
     }
 
+    function toggleSelectAll(masterCb) {
+      const checkboxes = document.querySelectorAll('.file-select-cb');
+      checkboxes.forEach(cb => cb.checked = masterCb.checked);
+    }
+
+    function downloadAllSelected() {
+      const checkboxes = document.querySelectorAll('.file-select-cb:checked');
+      if (!checkboxes || checkboxes.length === 0) {
+        alert('Please check at least one file to download.');
+        return;
+      }
+      
+      checkboxes.forEach((cb, idx) => {
+        setTimeout(() => {
+          const id = cb.getAttribute('data-id');
+          if (id) {
+            const a = document.createElement('a');
+            a.href = '/download?id=' + encodeURIComponent(id);
+            a.download = '';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+          }
+        }, idx * 300); // 300ms delay to prevent browser download popup blocking
+      });
+    }
+
     function onFilesPicked() {
       const input = document.getElementById('fileInput');
       const box = document.getElementById('fileBox');
@@ -725,7 +766,7 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
 
         if (fill) fill.style.width = '100%';
         if (status) {
-          status.innerText = 'Transfer Complete!';
+          status.innerText = 'Transfer Complete! (100% Lossless)';
           status.style.color = '#10B981';
         }
 
@@ -769,22 +810,28 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
         }
 
         const histList = document.getElementById('historyList');
+        const batchBox = document.getElementById('batchActionBox');
+
         if (histList) {
           if (data.history && data.history.length > 0) {
             globalHistoryList = data.history;
+            if (batchBox) batchBox.style.display = 'flex';
             let html = '';
             data.history.forEach((item) => {
               const fullSavedPath = item.finalPath || item.tempPath || data.activeSaveDir || '';
-              html += '<div style="padding:14px; margin-bottom:12px; background:rgba(255,255,255,0.02); border:1px solid var(--card-border); border-radius:12px;">' +
+              html += '<div style="padding:14px; margin-bottom:12px; background:rgba(255,255,255,0.02); border:1px solid var(--card-border); border-radius:12px; display:flex; gap:12px; align-items:flex-start;">' +
+                      '<input type="checkbox" class="file-select-cb" data-id="' + escapeHtml(item.id) + '" style="width:18px; height:18px; margin-top:3px; cursor:pointer;" title="Select file for batch download">' +
+                      '<div style="flex:1;">' +
                       '<div style="font-weight:700; color:white; font-size:14px; margin-bottom:4px;">' + escapeHtml(item.fileName) + ' <span style="font-weight:400; font-size:12px; color:var(--text-muted);">(' + (item.fileSize / 1024 / 1024).toFixed(1) + ' MB)</span></div>' +
                       '<div style="font-size:12px; color:var(--accent); word-break:break-all; margin-bottom:8px;"><b>Full Saved Path:</b> ' + escapeHtml(fullSavedPath) + '</div>' +
                       '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">' +
                       '<span style="font-size:11px; color:var(--text-muted);">' + escapeHtml(item.time) + ' &bull; ' + escapeHtml(item.senderName || 'Device') + '</span>' +
                       '<a href="/download?id=' + encodeURIComponent(item.id) + '" download class="btn-secondary btn-accent" style="font-size:12px; padding:6px 12px;">📥 Download File to PC</a>' +
-                      '</div></div>';
+                      '</div></div></div>';
             });
             histList.innerHTML = html;
           } else {
+            if (batchBox) batchBox.style.display = 'none';
             histList.innerHTML = 'No files received yet.';
           }
         }
