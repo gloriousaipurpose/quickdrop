@@ -427,6 +427,23 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
     /* Name Onboarding Modal */
     .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(9, 13, 22, 0.9); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; z-index: 999; }
     .modal-card { background: var(--card); border: 1px solid var(--card-border); border-radius: 20px; padding: 32px 24px; width: 90%; max-width: 400px; text-align: center; }
+
+    /* Subtle Background Watermark */
+    .watermark-bg {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%) rotate(-12deg);
+      font-size: clamp(48px, 10vw, 96px);
+      font-weight: 900;
+      letter-spacing: 12px;
+      text-transform: uppercase;
+      color: rgba(255, 255, 255, 0.03);
+      pointer-events: none;
+      user-select: none;
+      z-index: 1;
+      white-space: nowrap;
+    }
   </style>
 </head>
 <body>
@@ -441,6 +458,9 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
       <div style="margin-top:14px; font-size:12px; color:var(--text-muted); cursor:pointer; text-decoration:underline;" onclick="skipOnboarding()">Skip for now &rarr;</div>
     </div>
   </div>
+
+  <!-- Background Watermark -->
+  <div class="watermark-bg">HAVE PATIENCE</div>
 
   <div class="container">
     <div class="header">
