@@ -1,6 +1,6 @@
 /**
  * QuickDrop Premium Minimalist File Sharing Server
- * Pure, high-speed local Wi-Fi transfer with zero emojis and bulletproof UI
+ * Features: Name Onboarding, Random Unisex Compliments, Auto Save & Multi-File Transfer
  */
 
 const http = require('http');
@@ -9,7 +9,7 @@ const path = require('path');
 const os = require('os');
 const dgram = require('dgram');
 
-const PORT = 8080;
+const PORT = process.env.PORT || 8080;
 const UDP_PORT = 41234;
 
 function getDefaultSaveDir() {
@@ -59,36 +59,40 @@ function getLocalIp() {
 const localIp = getLocalIp();
 const pcName = os.hostname();
 
-// UDP Advertiser
-const socket = dgram.createSocket({ type: 'udp4', reuseAddr: true });
-socket.bind(UDP_PORT, () => {
-  socket.setBroadcast(true);
-});
-
-function broadcastPresence() {
-  const payload = JSON.stringify({
-    type: 'BEACON',
-    device: {
-      id: `${pcName}_${localIp}`,
-      name: pcName,
-      os: 'Windows',
-      ip: localIp,
-      port: PORT,
-      status: 'Ready to receive',
-    },
+// UDP Advertiser (Local Wi-Fi)
+try {
+  const socket = dgram.createSocket({ type: 'udp4', reuseAddr: true });
+  socket.bind(UDP_PORT, () => {
+    socket.setBroadcast(true);
   });
-  socket.send(payload, 0, payload.length, UDP_PORT, '255.255.255.255');
+
+  function broadcastPresence() {
+    const payload = JSON.stringify({
+      type: 'BEACON',
+      device: {
+        id: `${pcName}_${localIp}`,
+        name: pcName,
+        os: 'Windows',
+        ip: localIp,
+        port: PORT,
+        status: 'Ready to receive',
+      },
+    });
+    socket.send(payload, 0, payload.length, UDP_PORT, '255.255.255.255');
+  }
+
+  setInterval(broadcastPresence, 2000);
+  broadcastPresence();
+
+  socket.on('message', (msg) => {
+    try {
+      const data = JSON.parse(msg.toString());
+      if (data.type === 'PING') broadcastPresence();
+    } catch (e) {}
+  });
+} catch (e) {
+  // Graceful fallback for cloud hosting without raw UDP broadcast
 }
-
-setInterval(broadcastPresence, 2000);
-broadcastPresence();
-
-socket.on('message', (msg) => {
-  try {
-    const data = JSON.parse(msg.toString());
-    if (data.type === 'PING') broadcastPresence();
-  } catch (e) {}
-});
 
 function moveTempToFinal(tempFilePath, fileName, targetFolder) {
   if (!fs.existsSync(targetFolder)) {
@@ -176,7 +180,7 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
     const rawFileName = req.headers['x-file-name'] || 'file.dat';
     const fileName = decodeURIComponent(rawFileName);
     const fileSize = parseInt(req.headers['x-file-size'] || '0', 10);
-    const senderName = decodeURIComponent(req.headers['x-sender-name'] || 'Mobile Client');
+    const senderName = decodeURIComponent(req.headers['x-sender-name'] || 'Client');
 
     lastConnectedClient = {
       ip: clientIp,
@@ -239,7 +243,7 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
     return;
   }
 
-  // Unified Bulletproof Premium Minimalist UI
+  // Unified Premium Minimalist UI with Name Onboarding & Unisex Compliment Greeting
   if (req.url === '/' || req.url === '/index.html') {
     const escapedSaveDir = activeSaveDir.replace(/\\/g, '\\\\');
 
@@ -250,7 +254,7 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>QuickDrop — Minimalist File Sharing</title>
+  <title>QuickDrop — Minimalist File Transfer</title>
   <style>
     :root {
       --bg: #090D16;
@@ -265,8 +269,11 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); padding: 24px 16px; min-height: 100vh; display: flex; flex-direction: column; align-items: center; }
     .container { width: 100%; max-width: 520px; }
-    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--card-border); }
+    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--card-border); }
+    .brand-col { display: flex; flex-direction: column; }
     .brand { font-size: 20px; font-weight: 700; letter-spacing: -0.5px; }
+    .greeting { font-size: 13px; color: var(--text-muted); font-weight: 500; margin-top: 2px; }
+    .greeting span { color: var(--text); font-weight: 600; }
     .connection-badge { font-size: 12px; font-weight: 600; padding: 6px 12px; border-radius: 20px; background: rgba(16, 185, 129, 0.1); color: var(--accent); border: 1px solid rgba(16, 185, 129, 0.2); display: flex; align-items: center; gap: 6px; }
     .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
     .tabs { display: flex; background: var(--card); padding: 4px; border-radius: 12px; border: 1px solid var(--card-border); margin-bottom: 20px; }
@@ -283,12 +290,30 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
     .status-text { font-size: 14px; font-weight: 600; text-align: center; margin-top: 8px; }
     .info-row { display: flex; justify-content: space-between; font-size: 13px; padding: 8px 0; border-bottom: 1px solid var(--card-border); }
     .path-input { width: 100%; background: var(--bg); border: 1px solid var(--card-border); color: white; padding: 10px; border-radius: 8px; margin: 8px 0 16px 0; font-size: 13px; }
+
+    /* Name Onboarding Modal */
+    .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(9, 13, 22, 0.9); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; z-index: 999; }
+    .modal-card { background: var(--card); border: 1px solid var(--card-border); border-radius: 20px; padding: 32px 24px; width: 90%; max-width: 400px; text-align: center; }
   </style>
 </head>
 <body>
+
+  <!-- Name Onboarding Modal -->
+  <div class="modal-overlay" id="nameModal">
+    <div class="modal-card">
+      <h2 style="font-size:20px; font-weight:700; margin-bottom:8px;">Welcome to QuickDrop</h2>
+      <p style="font-size:13px; color:var(--text-muted); margin-bottom:20px;">Please enter your name to personalize your file sharing experience.</p>
+      <input type="text" id="userNameInput" class="path-input" placeholder="Your Name (e.g. Alex)" style="text-align:center; font-size:15px; margin-bottom:20px;">
+      <button class="btn" onclick="saveUserName()">Continue to App</button>
+    </div>
+  </div>
+
   <div class="container">
     <div class="header">
-      <div class="brand">QuickDrop</div>
+      <div class="brand-col">
+        <div class="brand">QuickDrop</div>
+        <div class="greeting" id="greetingText">Hi User</div>
+      </div>
       <div class="connection-badge" id="connBadge">
         <div class="dot"></div>
         <span id="connText">Connected to PC: ${pcName}</span>
@@ -303,7 +328,7 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
     <!-- Send Panel -->
     <div class="panel" id="panelSend">
       <h3 style="font-size:16px; margin-bottom:6px;">Select Files to Share</h3>
-      <p style="font-size:13px; color:var(--text-muted); margin-bottom:16px;">Direct high-speed transfer to ${pcName} (${localIp})</p>
+      <p style="font-size:13px; color:var(--text-muted); margin-bottom:16px;">Direct high-speed stream to ${pcName}</p>
       
       <input type="file" id="fileInput" multiple style="display:none;" onchange="onFilesPicked()">
       <button class="btn btn-secondary" onclick="document.getElementById('fileInput').click()">Choose Files from Device</button>
@@ -344,8 +369,35 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
   </div>
 
   <script>
-    const pcName = "${pcName}";
-    const localIp = "${localIp}";
+    const compliments = [
+      'Awesome', 'Brilliant', 'Superstar', 'Wonderful', 
+      'Legendary', 'Creative', 'Incredible', 'Fantastic', 'Amazing'
+    ];
+
+    let currentUserName = localStorage.getItem('quickdrop_user_name') || '';
+
+    function initUserOnboarding() {
+      if (!currentUserName) {
+        document.getElementById('nameModal').style.display = 'flex';
+      } else {
+        document.getElementById('nameModal').style.display = 'none';
+        displayGreeting();
+      }
+    }
+
+    function saveUserName() {
+      const inputVal = document.getElementById('userNameInput').value.trim();
+      if (!inputVal) return alert('Please enter your name.');
+      currentUserName = inputVal;
+      localStorage.setItem('quickdrop_user_name', currentUserName);
+      document.getElementById('nameModal').style.display = 'none';
+      displayGreeting();
+    }
+
+    function displayGreeting() {
+      const randomComp = compliments[Math.floor(Math.random() * compliments.length)];
+      document.getElementById('greetingText').innerHTML = 'Hi ' + randomComp + ' <span>' + currentUserName + '</span>';
+    }
 
     function switchTab(mode) {
       document.getElementById('tabSend').classList.toggle('active', mode === 'send');
@@ -407,7 +459,7 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
             xhr.open('POST', '/upload', true);
             xhr.setRequestHeader('X-File-Name', encodeURIComponent(file.name));
             xhr.setRequestHeader('X-File-Size', file.size);
-            xhr.setRequestHeader('X-Sender-Name', 'Client Device');
+            xhr.setRequestHeader('X-Sender-Name', currentUserName || 'Client Device');
 
             let lastLoaded = 0;
             xhr.upload.onprogress = (e) => {
@@ -486,7 +538,8 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
       } catch (e) {}
     }
 
-    // Auto load status on launch
+    // Initialize onboarding & greeting
+    initUserOnboarding();
     loadStatusAndHistory();
   </script>
 </body>
