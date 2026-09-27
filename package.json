@@ -1,0 +1,17 @@
+{
+  "name": "quickdrop",
+  "version": "1.0.0",
+  "description": "Super-simple local & cloud file sharing app (AirDrop alternative)",
+  "main": "web_fallback/server.js",
+  "scripts": {
+    "start": "node web_fallback/server.js"
+  },
+  "keywords": [
+    "airdrop",
+    "file-transfer",
+    "p2p",
+    "wifi-share"
+  ],
+  "author": "",
+  "license": "MIT"
+}
