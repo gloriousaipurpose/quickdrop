@@ -592,15 +592,15 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
 
         // Draw outer glass sphere gradient
         const outerGrd = ctx.createRadialGradient(cx - 20, cy - 20, 10, cx, cy, radius);
-        outerGrd.addColorStop(0, \`hsla(\${orbHue}, 80%, 75%, 0.8)\`);
-        outerGrd.addColorStop(0.5, \`hsla(\${orbHue}, 75%, 55%, 0.3)\`);
-        outerGrd.addColorStop(1, \`hsla(\${orbHue}, 90%, 35%, 0.05)\`);
+        outerGrd.addColorStop(0, 'hsla(' + orbHue + ', 80%, 75%, 0.8)');
+        outerGrd.addColorStop(0.5, 'hsla(' + orbHue + ', 75%, 55%, 0.3)');
+        outerGrd.addColorStop(1, 'hsla(' + orbHue + ', 90%, 35%, 0.05)');
 
         ctx.save();
         ctx.beginPath();
         ctx.arc(cx, cy, radius, 0, Math.PI * 2);
         ctx.fillStyle = outerGrd;
-        ctx.shadowColor = \`hsla(\${orbHue}, 90%, 60%, 0.5)\`;
+        ctx.shadowColor = 'hsla(' + orbHue + ', 90%, 60%, 0.5)';
         ctx.shadowBlur = 25 * orbSpeedFactor;
         ctx.fill();
 
@@ -622,8 +622,8 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
         ctx.closePath();
 
         const liquidGrd = ctx.createLinearGradient(0, cy, 0, cy + radius);
-        liquidGrd.addColorStop(0, \`hsla(\${orbHue}, 90%, 60%, 0.6)\`);
-        liquidGrd.addColorStop(1, \`hsla(\${orbHue + 20}, 90%, 40%, 0.8)\`);
+        liquidGrd.addColorStop(0, 'hsla(' + orbHue + ', 90%, 60%, 0.6)');
+        liquidGrd.addColorStop(1, 'hsla(' + (orbHue + 20) + ', 90%, 40%, 0.8)');
         ctx.fillStyle = liquidGrd;
         ctx.fill();
 
