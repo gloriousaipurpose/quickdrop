@@ -428,21 +428,48 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
     .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(9, 13, 22, 0.9); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; z-index: 999; }
     .modal-card { background: var(--card); border: 1px solid var(--card-border); border-radius: 20px; padding: 32px 24px; width: 90%; max-width: 400px; text-align: center; }
 
-    /* Subtle Background Watermark */
+    /* Prominent "HAVE PATIENCE" Watermark Banner */
+    .patience-banner {
+      text-align: center;
+      font-size: 15px;
+      font-weight: 800;
+      letter-spacing: 5px;
+      text-transform: uppercase;
+      color: rgba(255, 255, 255, 0.45);
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px dashed rgba(255, 255, 255, 0.15);
+      border-radius: 12px;
+      padding: 10px 16px;
+      margin-bottom: 20px;
+      user-select: none;
+    }
+
+    /* Background Watermark */
     .watermark-bg {
       position: fixed;
       top: 50%;
       left: 50%;
       transform: translate(-50%, -50%) rotate(-12deg);
-      font-size: clamp(48px, 10vw, 96px);
+      font-size: clamp(52px, 12vw, 110px);
       font-weight: 900;
       letter-spacing: 12px;
       text-transform: uppercase;
-      color: rgba(255, 255, 255, 0.03);
+      color: rgba(255, 255, 255, 0.07);
       pointer-events: none;
       user-select: none;
       z-index: 1;
       white-space: nowrap;
+    }
+
+    .watermark-inside {
+      text-align: center;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 4px;
+      color: rgba(255, 255, 255, 0.2);
+      text-transform: uppercase;
+      margin-top: 20px;
+      user-select: none;
     }
   </style>
 </head>
@@ -473,6 +500,9 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
         <span id="connText">Target PC: ${pcName}</span>
       </div>
     </div>
+
+    <!-- Prominent Visible "HAVE PATIENCE" Banner -->
+    <div class="patience-banner">⏳ HAVE PATIENCE</div>
 
     <div class="tabs">
       <div class="tab active" id="tabSend" onclick="switchTab('send')">Send Files</div>
@@ -505,6 +535,8 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
         <div class="success-path" id="successPathText">Files received successfully.</div>
         <div id="successDownloadContainer" style="margin-top:10px;"></div>
       </div>
+
+      <div class="watermark-inside">⏳ HAVE PATIENCE</div>
     </div>
 
     <!-- Receive / Storage Settings Panel -->
@@ -559,6 +591,8 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
 
         <div id="historyList" style="font-size:13px; color:var(--text-muted);">Fetching history...</div>
       </div>
+
+      <div class="watermark-inside">⏳ HAVE PATIENCE</div>
     </div>
   </div>
 
