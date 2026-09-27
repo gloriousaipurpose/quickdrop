@@ -1,6 +1,6 @@
 /**
  * QuickDrop Premium Minimalist File Sharing Server
- * Includes 3D Morphing Glass Orb Dropzone (Option 2)
+ * Includes 3D Morphing Glass Orb Dropzone & Folder Selection/Opening Support
  */
 
 const http = require('http');
@@ -8,14 +8,16 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const dgram = require('dgram');
+const { exec } = require('child_process');
 
 const PORT = process.env.PORT || 8080;
 const UDP_PORT = 41234;
 
 function getDefaultSaveDir() {
-  const dDrivePath = 'D:\\QuickDrop';
+  // 1. Check D:\ drive
   try {
     if (fs.existsSync('D:\\')) {
+      const dDrivePath = 'D:\\QuickDrop';
       if (!fs.existsSync(dDrivePath)) {
         fs.mkdirSync(dDrivePath, { recursive: true });
       }
@@ -23,7 +25,28 @@ function getDefaultSaveDir() {
     }
   } catch (e) {}
 
-  const fallbackPath = path.join(os.homedir(), 'Downloads', 'QuickDrop');
+  // 2. Check C:\ drive
+  try {
+    if (fs.existsSync('C:\\')) {
+      const cDrivePath = 'C:\\QuickDrop';
+      if (!fs.existsSync(cDrivePath)) {
+        fs.mkdirSync(cDrivePath, { recursive: true });
+      }
+      return cDrivePath;
+    }
+  } catch (e) {}
+
+  // 3. Check Desktop folder
+  try {
+    const desktopPath = path.join(os.homedir(), 'Desktop', 'QuickDrop');
+    if (!fs.existsSync(desktopPath)) {
+      fs.mkdirSync(desktopPath, { recursive: true });
+    }
+    return desktopPath;
+  } catch (e) {}
+
+  // 4. Fallback for non-Windows (e.g. Linux / Mac / cloud container)
+  const fallbackPath = path.join(os.homedir(), 'QuickDrop');
   if (!fs.existsSync(fallbackPath)) {
     fs.mkdirSync(fallbackPath, { recursive: true });
   }
@@ -35,7 +58,7 @@ let autoSaveToLastPath = true;
 const tempDir = path.join(activeSaveDir, '.temp');
 
 if (!fs.existsSync(tempDir)) {
-  fs.mkdirSync(tempDir, { recursive: true });
+  try { fs.mkdirSync(tempDir, { recursive: true }); } catch (e) {}
 }
 
 let lastConnectedClient = null;
@@ -59,11 +82,29 @@ function getLocalIp() {
 const localIp = getLocalIp();
 const pcName = os.hostname();
 
+// Native Windows Folder Browser Dialog Spawner
+function openFolderPickerDialog(callback) {
+  if (process.platform !== 'win32') {
+    return callback(new Error('Native folder picker GUI is supported on Windows PC host.'));
+  }
+  const psScript = `Add-Type -AssemblyName System.Windows.Forms; $dialog = New-Object System.Windows.Forms.FolderBrowserDialog; $dialog.Description = 'Select QuickDrop Save Directory'; $dialog.ShowNewFolderButton = $true; if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { Write-Output $dialog.SelectedPath }`;
+
+  exec(`powershell -NoProfile -ExecutionPolicy Bypass -Command "${psScript}"`, (err, stdout) => {
+    if (err) return callback(err);
+    const selectedPath = stdout.trim();
+    if (selectedPath) {
+      callback(null, selectedPath);
+    } else {
+      callback(new Error('Selection cancelled'));
+    }
+  });
+}
+
 // UDP Advertiser (Local Wi-Fi)
 try {
   const socket = dgram.createSocket({ type: 'udp4', reuseAddr: true });
   socket.on('error', (err) => {
-    // Ignore UDP socket errors gracefully on cloud environments like Render
+    // Ignore UDP socket errors gracefully on cloud environments
   });
   socket.bind(UDP_PORT, () => {
     try {
@@ -145,7 +186,56 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
       connectedClient: lastConnectedClient,
       history: transferHistory,
       pendingCount: pendingReceivedFiles.length,
+      isWindows: process.platform === 'win32',
     }));
+    return;
+  }
+
+  // Native Folder Browser Dialog Endpoint
+  if (req.method === 'POST' && req.url === '/api/select-folder') {
+    openFolderPickerDialog((err, newPath) => {
+      if (err || !newPath) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, error: err ? err.message : 'Cancelled' }));
+        return;
+      }
+      activeSaveDir = newPath;
+      if (!fs.existsSync(activeSaveDir)) {
+        try { fs.mkdirSync(activeSaveDir, { recursive: true }); } catch (e) {}
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true, activeSaveDir }));
+    });
+    return;
+  }
+
+  // Open Folder / File Location in Windows Explorer
+  if (req.method === 'POST' && req.url === '/api/open-folder') {
+    let body = '';
+    req.on('data', chunk => body += chunk);
+    req.on('end', () => {
+      try {
+        const json = body ? JSON.parse(body) : {};
+        const targetPath = json.path || activeSaveDir;
+        if (process.platform === 'win32') {
+          // If path is a file, open parent folder and select file if possible
+          if (fs.existsSync(targetPath) && fs.statSync(targetPath).isFile()) {
+            exec(`explorer.exe /select,"${targetPath}"`);
+          } else {
+            exec(`explorer.exe "${targetPath}"`);
+          }
+        } else if (process.platform === 'darwin') {
+          exec(`open "${targetPath}"`);
+        } else {
+          exec(`xdg-open "${targetPath}"`);
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true, openedPath: targetPath }));
+      } catch (e) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    });
     return;
   }
 
@@ -181,7 +271,7 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
     return;
   }
 
-  // Upload Endpoint
+  // Upload Endpoint (Supports iPhone & Android to Windows transfers)
   if (req.method === 'POST' && req.url === '/upload') {
     const rawFileName = req.headers['x-file-name'] || 'file.dat';
     const fileName = decodeURIComponent(rawFileName);
@@ -237,6 +327,8 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
         success: true,
         message: 'File received successfully',
         saved: fileItem.saved,
+        savedPath: fileItem.finalPath || fileItem.tempPath,
+        activeSaveDir: activeSaveDir,
         speed: `${speedMBps} MB/s`,
       }));
     });
@@ -249,7 +341,7 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
     return;
   }
 
-  // Unified UI with 3D Morphing Glass Orb (Option 2)
+  // Unified UI with 3D Morphing Glass Orb & Path Management
   if (req.url === '/' || req.url === '/index.html') {
     const escapedSaveDir = activeSaveDir.replace(/\\/g, '\\\\');
 
@@ -277,10 +369,10 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); padding: 24px 16px; min-height: 100vh; display: flex; flex-direction: column; align-items: center; overflow-x: hidden; }
-    .container { width: 100%; max-width: 520px; z-index: 2; position: relative; }
+    .container { width: 100%; max-width: 540px; z-index: 2; position: relative; }
     .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--card-border); }
     .brand-col { display: flex; flex-direction: column; }
-    .brand { font-size: 20px; font-weight: 700; letter-spacing: -0.5px; }
+    .brand { font-size: 22px; font-weight: 700; letter-spacing: -0.5px; }
     .greeting { font-size: 13px; color: var(--text-muted); font-weight: 500; margin-top: 2px; }
     .greeting span { color: var(--text); font-weight: 600; }
     .connection-badge { font-size: 12px; font-weight: 600; padding: 6px 12px; border-radius: 20px; background: rgba(16, 185, 129, 0.1); color: var(--accent); border: 1px solid rgba(16, 185, 129, 0.2); display: flex; align-items: center; gap: 6px; }
@@ -289,22 +381,37 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
     .tab { flex: 1; padding: 12px; text-align: center; font-size: 14px; font-weight: 600; color: var(--text-muted); border-radius: 8px; cursor: pointer; transition: all 0.2s; }
     .tab.active { background: var(--primary); color: white; }
     .panel { background: var(--card); border-radius: 16px; border: 1px solid var(--card-border); padding: 24px; margin-bottom: 20px; backdrop-filter: blur(10px); }
+    
+    /* Save Path Banner Box */
+    .save-location-card { background: rgba(255, 255, 255, 0.03); border: 1px solid var(--card-border); border-radius: 12px; padding: 14px; margin-bottom: 20px; }
+    .save-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); font-weight: 700; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center; }
+    .path-row { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
+    .path-input { width: 100%; background: var(--bg); border: 1px solid var(--card-border); color: var(--accent); font-weight: 600; padding: 10px 12px; border-radius: 8px; font-size: 13px; outline: none; }
+    .path-actions { display: flex; gap: 8px; }
+
     .btn { background: var(--primary); color: white; border: none; padding: 14px 20px; border-radius: 10px; font-weight: 600; font-size: 15px; cursor: pointer; width: 100%; transition: background 0.2s; }
     .btn:hover { background: var(--primary-hover); }
-    .btn-secondary { background: rgba(255, 255, 255, 0.05); color: var(--text); border: 1px solid var(--card-border); margin-bottom: 12px; }
-    .btn-secondary:hover { background: rgba(255, 255, 255, 0.1); }
+    .btn-secondary { background: rgba(255, 255, 255, 0.06); color: var(--text); border: 1px solid var(--card-border); margin-bottom: 0; padding: 10px 14px; font-size: 13px; font-weight: 600; border-radius: 8px; cursor: pointer; transition: all 0.2s; }
+    .btn-secondary:hover { background: rgba(255, 255, 255, 0.12); border-color: rgba(255, 255, 255, 0.2); }
+    .btn-accent { background: rgba(16, 185, 129, 0.15); color: #10B981; border: 1px solid rgba(16, 185, 129, 0.3); }
+    .btn-accent:hover { background: rgba(16, 185, 129, 0.25); }
+
     .file-box { background: var(--bg); border-radius: 10px; padding: 14px; margin: 14px 0; font-size: 13px; color: var(--text-muted); border: 1px dashed var(--card-border); line-height: 1.5; word-break: break-word; }
     .progress-track { background: rgba(255, 255, 255, 0.05); height: 10px; border-radius: 5px; overflow: hidden; margin: 16px 0; display: none; }
     .progress-fill { background: var(--primary); height: 100%; width: 0%; transition: width 0.1s; }
     .status-text { font-size: 14px; font-weight: 600; text-align: center; margin-top: 8px; }
     .info-row { display: flex; justify-content: space-between; font-size: 13px; padding: 8px 0; border-bottom: 1px solid var(--card-border); }
-    .path-input { width: 100%; background: var(--bg); border: 1px solid var(--card-border); color: white; padding: 10px; border-radius: 8px; margin: 8px 0 16px 0; font-size: 13px; }
 
     /* 3D Morphing Orb Dropzone Canvas */
     .orb-wrapper { display: flex; flex-direction: column; align-items: center; justify-content: center; margin: 10px 0 20px 0; position: relative; }
     #orbCanvas { width: 200px; height: 200px; cursor: grab; border-radius: 50%; }
     #orbCanvas:active { cursor: grabbing; }
     .orb-label { font-size: 12px; color: var(--text-muted); margin-top: 6px; font-weight: 500; }
+
+    /* Success Card */
+    .success-card { background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 12px; padding: 14px; margin-top: 14px; display: none; text-align: left; }
+    .success-title { font-weight: 700; color: #10B981; font-size: 14px; margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }
+    .success-path { font-size: 12px; color: var(--text); word-break: break-all; margin-bottom: 10px; }
 
     /* Name Onboarding Modal */
     .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(9, 13, 22, 0.9); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; z-index: 999; }
@@ -317,8 +424,8 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
   <div class="modal-overlay" id="nameModal">
     <div class="modal-card">
       <h2 style="font-size:20px; font-weight:700; margin-bottom:8px;">Welcome to QuickDrop</h2>
-      <p style="font-size:13px; color:var(--text-muted); margin-bottom:20px;">Please enter your name to personalize your experience.</p>
-      <input type="text" id="userNameInput" class="path-input" placeholder="Your Name (e.g. Alex)" style="text-align:center; font-size:15px; margin-bottom:20px;">
+      <p style="font-size:13px; color:var(--text-muted); margin-bottom:20px;">Please enter your name to personalize your file transfers.</p>
+      <input type="text" id="userNameInput" class="path-input" placeholder="Your Name (e.g. Alex)" style="text-align:center; font-size:15px; margin-bottom:20px; color:white;">
       <button class="btn" onclick="saveUserName()">Continue to App</button>
     </div>
   </div>
@@ -331,16 +438,32 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
       </div>
       <div class="connection-badge" id="connBadge">
         <div class="dot"></div>
-        <span id="connText">Connected to PC: ${pcName}</span>
+        <span id="connText">Target PC: ${pcName}</span>
+      </div>
+    </div>
+
+    <!-- Active Storage Destination Display Card -->
+    <div class="save-location-card">
+      <div class="save-label">
+        <span>📂 Target Save Location on PC</span>
+        <span style="color:var(--accent); font-weight:600;" id="pathPriorityBadge">Priority: D: &rarr; C: &rarr; Desktop</span>
+      </div>
+      <div class="path-row">
+        <input type="text" class="path-input" id="activeSaveDirDisplay" value="${escapedSaveDir}">
+        <button class="btn-secondary" onclick="triggerNativeFolderPicker()" title="Browse folder using Windows File Explorer">📂 Select Folder</button>
+      </div>
+      <div class="path-actions">
+        <button class="btn-secondary" style="flex:1;" onclick="updateSavePathFromInput()">Set Path</button>
+        <button class="btn-secondary btn-accent" style="flex:1;" onclick="openFolderOnPC()">🚀 Open Folder on PC</button>
       </div>
     </div>
 
     <div class="tabs">
       <div class="tab active" id="tabSend" onclick="switchTab('send')">Send Files</div>
-      <div class="tab" id="tabReceive" onclick="switchTab('receive')">Receive Mode</div>
+      <div class="tab" id="tabReceive" onclick="switchTab('receive')">Receive / History</div>
     </div>
 
-    <!-- Send Panel -->
+    <!-- Send Panel (iPhone / Mobile / Browser to Windows) -->
     <div class="panel" id="panelSend">
       <!-- 3D Morphing Glass Orb Component -->
       <div class="orb-wrapper">
@@ -349,10 +472,10 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
       </div>
 
       <h3 style="font-size:16px; margin-bottom:6px;">Select Files to Share</h3>
-      <p style="font-size:13px; color:var(--text-muted); margin-bottom:16px;">Direct high-speed transfer to ${pcName}</p>
+      <p style="font-size:13px; color:var(--text-muted); margin-bottom:16px;">Direct high-speed transfer to PC (${pcName})</p>
       
       <input type="file" id="fileInput" multiple style="display:none;" onchange="onFilesPicked()">
-      <button class="btn btn-secondary" onclick="document.getElementById('fileInput').click()">Choose Files from Device</button>
+      <button class="btn btn-secondary" style="width:100%; padding:14px; margin-bottom:12px;" onclick="document.getElementById('fileInput').click()">Choose Files from Device (iPhone/Android/PC)</button>
 
       <div class="file-box" id="fileBox">No files selected</div>
 
@@ -360,12 +483,19 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
 
       <div class="progress-track" id="progressTrack"><div class="progress-fill" id="progressFill"></div></div>
       <div class="status-text" id="statusText"></div>
+
+      <!-- Success Card with Path & Open Link -->
+      <div class="success-card" id="transferSuccessCard">
+        <div class="success-title">🎉 Transfer Successful</div>
+        <div class="success-path" id="successPathText">Files saved directly on PC.</div>
+        <button class="btn-secondary btn-accent" style="width:100%;" onclick="openFolderOnPC(lastSavedPath)">📂 Open File Folder in PC Explorer</button>
+      </div>
     </div>
 
-    <!-- Receive Panel -->
+    <!-- Receive / History Panel -->
     <div class="panel" id="panelReceive" style="display:none;">
-      <h3 style="font-size:16px; margin-bottom:6px;">Receive Mode Settings</h3>
-      <p style="font-size:13px; color:var(--text-muted); margin-bottom:16px;">Configure storage target for incoming transfers.</p>
+      <h3 style="font-size:16px; margin-bottom:6px;">Receive Mode & Connection Status</h3>
+      <p style="font-size:13px; color:var(--text-muted); margin-bottom:16px;">Details about target Windows storage & transfer history.</p>
       
       <div class="info-row">
         <span style="color:var(--text-muted);">PC Device Name</span>
@@ -375,15 +505,12 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
         <span style="color:var(--text-muted);">Local Wi-Fi IP</span>
         <span style="font-weight:600;">${localIp}:${PORT}</span>
       </div>
-      
-      <div style="margin-top:16px;">
-        <label style="font-size:13px; font-weight:600;">Target Save Path on PC:</label>
-        <input type="text" class="path-input" id="saveDirInput" value="${escapedSaveDir}">
-        <button class="btn btn-secondary" onclick="updateSavePath()">Update Save Path</button>
-      </div>
 
-      <div style="margin-top:16px;">
-        <h4 style="font-size:14px; margin-bottom:8px;">Recent Received Transfers</h4>
+      <div style="margin-top:20px;">
+        <h4 style="font-size:14px; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center;">
+          <span>Recent Received Files</span>
+          <button class="btn-secondary" style="font-size:11px; padding:4px 8px;" onclick="loadStatusAndHistory()">Refresh</button>
+        </h4>
         <div id="historyList" style="font-size:13px; color:var(--text-muted);">Fetching history...</div>
       </div>
     </div>
@@ -392,6 +519,7 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
   <script>
     const compliments = ['Awesome', 'Brilliant', 'Superstar', 'Wonderful', 'Legendary', 'Creative', 'Incredible', 'Fantastic', 'Amazing'];
     let currentUserName = localStorage.getItem('quickdrop_user_name') || '';
+    let lastSavedPath = '';
 
     // 3D Morphing Orb Engine
     let orbSpeedFactor = 1.0;
@@ -409,7 +537,7 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
       const radius = 75;
       let time = 0;
 
-      // Mouse drag rotation controls
+      // Mouse/Touch drag rotation controls
       canvas.addEventListener('mousedown', (e) => {
         isDragging = true;
         lastMouseX = e.clientX;
@@ -546,6 +674,60 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
       }
     }
 
+    // Trigger Windows Native Folder Selection Dialog
+    async function triggerNativeFolderPicker() {
+      try {
+        const res = await fetch('/api/select-folder', { method: 'POST' });
+        const data = await res.json();
+        if (data.success && data.activeSaveDir) {
+          document.getElementById('activeSaveDirDisplay').value = data.activeSaveDir;
+          alert('Folder selected successfully: ' + data.activeSaveDir);
+        } else if (data.error) {
+          alert('Folder selection: ' + data.error);
+        }
+      } catch (e) {
+        alert('Could not trigger folder picker: ' + e.message);
+      }
+    }
+
+    // Update path manually from text input
+    async function updateSavePathFromInput() {
+      const pathVal = document.getElementById('activeSaveDirDisplay').value;
+      try {
+        const res = await fetch('/api/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ activeSaveDir: pathVal })
+        });
+        const data = await res.json();
+        if (data.success) {
+          alert('Save path updated to: ' + data.activeSaveDir);
+        }
+      } catch (e) {
+        alert('Error updating path: ' + e.message);
+      }
+    }
+
+    // Open target folder in Windows File Explorer
+    async function openFolderOnPC(specificPath) {
+      const target = specificPath || document.getElementById('activeSaveDirDisplay').value;
+      try {
+        const res = await fetch('/api/open-folder', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: target })
+        });
+        const data = await res.json();
+        if (data.success) {
+          console.log('Opened folder on PC:', data.openedPath);
+        } else {
+          alert('Notice: ' + (data.error || 'Failed to open folder'));
+        }
+      } catch (e) {
+        alert('Could not open folder on PC: ' + e.message);
+      }
+    }
+
     function onFilesPicked() {
       const input = document.getElementById('fileInput');
       const box = document.getElementById('fileBox');
@@ -575,8 +757,11 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
       const fill = document.getElementById('progressFill');
       const status = document.getElementById('statusText');
       const sendBtn = document.getElementById('sendBtn');
+      const successCard = document.getElementById('transferSuccessCard');
+      const successPathText = document.getElementById('successPathText');
       
       track.style.display = 'block';
+      successCard.style.display = 'none';
       sendBtn.disabled = true;
       sendBtn.style.opacity = '0.5';
       setOrbActive(true);
@@ -591,7 +776,7 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
           status.innerText = 'Transferring [' + (i + 1) + '/' + files.length + ']: ' + file.name;
           status.style.color = '#F3F4F6';
 
-          await new Promise((resolve, reject) => {
+          const resData = await new Promise((resolve, reject) => {
             const xhr = new XMLHttpRequest();
             xhr.open('POST', '/upload', true);
             xhr.setRequestHeader('X-File-Name', encodeURIComponent(file.name));
@@ -615,17 +800,30 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
             };
 
             xhr.onload = () => {
-              if (xhr.status === 200) resolve();
-              else reject(new Error('Upload failed'));
+              if (xhr.status === 200) {
+                try { resolve(JSON.parse(xhr.responseText)); } catch (e) { resolve({}); }
+              } else reject(new Error('Upload failed'));
             };
             xhr.onerror = () => reject(new Error('Network error'));
             xhr.send(file);
           });
+
+          if (resData && resData.savedPath) {
+            lastSavedPath = resData.savedPath;
+          }
         }
 
         fill.style.width = '100%';
-        status.innerText = 'Transfer Complete';
+        status.innerText = 'Transfer Complete!';
         status.style.color = '#10B981';
+
+        // Show detailed path & direct open button
+        successCard.style.display = 'block';
+        if (lastSavedPath) {
+          successPathText.innerHTML = '<b>Saved Path on PC:</b><br><code style="color:#10B981;">' + lastSavedPath + '</code>';
+        } else {
+          successPathText.innerText = 'Saved in active QuickDrop folder on PC.';
+        }
       } catch (err) {
         status.innerText = 'Error: ' + err.message;
         status.style.color = '#EF4444';
@@ -636,28 +834,15 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
       }
     }
 
-    async function updateSavePath() {
-      const pathVal = document.getElementById('saveDirInput').value;
-      try {
-        const res = await fetch('/api/settings', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ activeSaveDir: pathVal })
-        });
-        const data = await res.json();
-        if (data.success) {
-          alert('Save directory updated to: ' + data.activeSaveDir);
-        }
-      } catch (e) {
-        alert('Error updating path: ' + e.message);
-      }
-    }
-
     async function loadStatusAndHistory() {
       try {
         const res = await fetch('/status');
         const data = await res.json();
         
+        if (data.activeSaveDir) {
+          document.getElementById('activeSaveDirDisplay').value = data.activeSaveDir;
+        }
+
         if (data.connectedClient) {
           document.getElementById('connText').innerText = 'Connected: ' + data.connectedClient.name;
         }
@@ -666,8 +851,14 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
         if (data.history && data.history.length > 0) {
           let html = '';
           data.history.forEach(item => {
-            html += '<div style="padding:6px 0; border-bottom:1px solid var(--card-border);">&bull; ' + 
-                    item.fileName + ' (' + (item.fileSize / 1024 / 1024).toFixed(1) + ' MB) &mdash; ' + item.time + '</div>';
+            const savedLocation = item.finalPath || item.tempPath || data.activeSaveDir;
+            html += '<div style="padding:10px; margin-bottom:8px; background:rgba(255,255,255,0.02); border:1px solid var(--card-border); border-radius:8px;">' +
+                    '<div style="font-weight:600; color:white;">' + item.fileName + ' (' + (item.fileSize / 1024 / 1024).toFixed(1) + ' MB)</div>' +
+                    '<div style="font-size:11px; color:var(--text-muted); margin-top:2px;">Saved to: <code style="color:var(--accent);">' + savedLocation + '</code></div>' +
+                    '<div style="display:flex; justify-content:space-between; align-items:center; margin-top:6px;">' +
+                    '<span style="font-size:11px; color:var(--text-muted);">' + item.time + ' &bull; ' + (item.senderName || 'Client') + '</span>' +
+                    '<button class="btn-secondary" style="font-size:11px; padding:3px 8px;" onclick="openFolderOnPC(\'' + savedLocation.replace(/\\\\/g, '\\\\\\\\') + '\')">📂 Open</button>' +
+                    '</div></div>';
           });
           histList.innerHTML = html;
         } else {

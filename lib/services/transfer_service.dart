@@ -37,7 +37,7 @@ class TransferService extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Get target save directory (Prefers D:\QuickDrop if available)
+  /// Get target save directory: D:\QuickDrop -> C:\QuickDrop -> Desktop\QuickDrop -> Fallback
   Future<Directory> getSaveDirectory() async {
     if (_customSaveDirectoryPath != null && _customSaveDirectoryPath!.isNotEmpty) {
       final customDir = Directory(_customSaveDirectoryPath!);
@@ -49,21 +49,32 @@ class TransferService extends ChangeNotifier {
 
     try {
       if (Platform.isWindows) {
-        final dDrive = Directory('D:\\QuickDrop');
+        // 1. Check D:\ drive
         if (await Directory('D:\\').exists()) {
+          final dDrive = Directory('D:\\QuickDrop');
           if (!await dDrive.exists()) {
             await dDrive.create(recursive: true);
           }
           return dDrive;
         }
 
-        final downloadsDir = await getDownloadsDirectory();
-        if (downloadsDir != null) {
-          final quickDropFolder = Directory('${downloadsDir.path}\\QuickDrop');
-          if (!await quickDropFolder.exists()) {
-            await quickDropFolder.create(recursive: true);
+        // 2. Check C:\ drive
+        if (await Directory('C:\\').exists()) {
+          final cDrive = Directory('C:\\QuickDrop');
+          if (!await cDrive.exists()) {
+            await cDrive.create(recursive: true);
           }
-          return quickDropFolder;
+          return cDrive;
+        }
+
+        // 3. Check Desktop folder
+        final userProfile = Platform.environment['USERPROFILE'] ?? '';
+        if (userProfile.isNotEmpty) {
+          final desktopDir = Directory('$userProfile\\Desktop\\QuickDrop');
+          if (!await desktopDir.exists()) {
+            await desktopDir.create(recursive: true);
+          }
+          return desktopDir;
         }
       } else {
         final extDir = await getExternalStorageDirectory();
