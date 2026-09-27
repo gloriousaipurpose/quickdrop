@@ -1,6 +1,6 @@
 /**
  * QuickDrop Premium Minimalist File Sharing Server
- * Includes Save Folder Selection/Opening & iPhone/Android Wi-Fi Transfer Support
+ * Includes Target Folder Selection & iPhone/Android Wi-Fi Transfer Support
  */
 
 const http = require('http');
@@ -138,12 +138,22 @@ try {
   });
 } catch (e) {}
 
+// Robust file moving logic handling cross-device / cross-drive moves (C: vs D:)
 function moveTempToFinal(tempFilePath, fileName, targetFolder) {
   if (!fs.existsSync(targetFolder)) {
     fs.mkdirSync(targetFolder, { recursive: true });
   }
   const destPath = path.join(targetFolder, fileName);
-  fs.renameSync(tempFilePath, destPath);
+  try {
+    fs.renameSync(tempFilePath, destPath);
+  } catch (err) {
+    try {
+      fs.copyFileSync(tempFilePath, destPath);
+      fs.unlinkSync(tempFilePath);
+    } catch (copyErr) {
+      console.error('[File Move Error]', copyErr);
+    }
+  }
   return destPath;
 }
 
@@ -205,35 +215,6 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
       }
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ success: true, activeSaveDir }));
-    });
-    return;
-  }
-
-  // Open Folder / File Location in Windows Explorer
-  if (req.method === 'POST' && req.url === '/api/open-folder') {
-    let body = '';
-    req.on('data', chunk => body += chunk);
-    req.on('end', () => {
-      try {
-        const json = body ? JSON.parse(body) : {};
-        const targetPath = json.path || activeSaveDir;
-        if (process.platform === 'win32') {
-          if (fs.existsSync(targetPath) && fs.statSync(targetPath).isFile()) {
-            exec(`explorer.exe /select,"${targetPath}"`);
-          } else {
-            exec(`explorer.exe "${targetPath}"`);
-          }
-        } else if (process.platform === 'darwin') {
-          exec(`open "${targetPath}"`);
-        } else {
-          exec(`xdg-open "${targetPath}"`);
-        }
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: true, openedPath: targetPath }));
-      } catch (e) {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: e.message }));
-      }
     });
     return;
   }
@@ -381,12 +362,11 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
     .tab.active { background: var(--primary); color: white; }
     .panel { background: var(--card); border-radius: 16px; border: 1px solid var(--card-border); padding: 24px; margin-bottom: 20px; backdrop-filter: blur(10px); }
     
-    /* Save Path Banner Box */
+    /* Save Path Banner Box inside Receiving Panel */
     .save-location-card { background: rgba(255, 255, 255, 0.03); border: 1px solid var(--card-border); border-radius: 12px; padding: 14px; margin-bottom: 20px; }
     .save-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); font-weight: 700; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center; }
     .path-row { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
     .path-input { width: 100%; background: var(--bg); border: 1px solid var(--card-border); color: var(--accent); font-weight: 600; padding: 10px 12px; border-radius: 8px; font-size: 13px; outline: none; }
-    .path-actions { display: flex; gap: 8px; }
 
     .btn { background: var(--primary); color: white; border: none; padding: 14px 20px; border-radius: 10px; font-weight: 600; font-size: 15px; cursor: pointer; width: 100%; transition: background 0.2s; }
     .btn:hover { background: var(--primary-hover); }
@@ -404,7 +384,7 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
     /* Success Card */
     .success-card { background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 12px; padding: 14px; margin-top: 14px; display: none; text-align: left; }
     .success-title { font-weight: 700; color: #10B981; font-size: 14px; margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }
-    .success-path { font-size: 12px; color: var(--text); word-break: break-all; margin-bottom: 10px; }
+    .success-path { font-size: 12px; color: var(--text); word-break: break-all; }
 
     /* Name Onboarding Modal */
     .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(9, 13, 22, 0.9); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; z-index: 999; }
@@ -436,25 +416,9 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
       </div>
     </div>
 
-    <!-- Active Storage Destination Display Card -->
-    <div class="save-location-card">
-      <div class="save-label">
-        <span>📂 Target Save Location on PC</span>
-        <span style="color:var(--accent); font-weight:600;" id="pathPriorityBadge">Priority: D: &rarr; C: &rarr; Desktop</span>
-      </div>
-      <div class="path-row">
-        <input type="text" class="path-input" id="activeSaveDirDisplay" value="${escapedSaveDir}">
-        <button type="button" class="btn-secondary" onclick="triggerNativeFolderPicker()" title="Browse folder using Windows File Explorer">📂 Select Folder</button>
-      </div>
-      <div class="path-actions">
-        <button type="button" class="btn-secondary" style="flex:1;" onclick="updateSavePathFromInput()">Set Path</button>
-        <button type="button" class="btn-secondary btn-accent" style="flex:1;" onclick="openFolderOnPC()">🚀 Open Folder on PC</button>
-      </div>
-    </div>
-
     <div class="tabs">
       <div class="tab active" id="tabSend" onclick="switchTab('send')">Send Files</div>
-      <div class="tab" id="tabReceive" onclick="switchTab('receive')">Receive / History</div>
+      <div class="tab" id="tabReceive" onclick="switchTab('receive')">Receive / Storage Settings</div>
     </div>
 
     <!-- Send Panel (iPhone / Mobile / Browser to Windows) -->
@@ -472,22 +436,33 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
       <div class="progress-track" id="progressTrack"><div class="progress-fill" id="progressFill"></div></div>
       <div class="status-text" id="statusText"></div>
 
-      <!-- Success Card with Path & Open Link -->
+      <!-- Success Card -->
       <div class="success-card" id="transferSuccessCard">
-        <div class="success-title">🎉 Transfer Successful</div>
+        <div class="success-title">🎉 Transfer Successful!</div>
         <div class="success-path" id="successPathText">Files saved directly on PC.</div>
-        <button type="button" class="btn-secondary btn-accent" style="width:100%;" onclick="openLastSavedFolder()">📂 Open File Folder in PC Explorer</button>
       </div>
     </div>
 
-    <!-- Receive / History Panel -->
+    <!-- Receive / Storage Settings Panel -->
     <div class="panel" id="panelReceive" style="display:none;">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-        <h3 style="font-size:16px;">Receive Mode & Connection Status</h3>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+        <h3 style="font-size:16px;">Receive Mode & Target Storage</h3>
         <button type="button" class="btn-secondary btn-accent" onclick="loadStatusAndHistory()" style="padding:6px 12px; font-size:12px; font-weight:700;">🔄 Refresh Status</button>
       </div>
-      <p style="font-size:13px; color:var(--text-muted); margin-bottom:16px;">Details about target Windows storage & transfer history.</p>
-      
+
+      <!-- Target Storage Location Settings (Only in Receiving Section) -->
+      <div class="save-location-card">
+        <div class="save-label">
+          <span>📂 Target Save Location on PC</span>
+          <span style="color:var(--accent); font-weight:600;">Default Priority: D: &rarr; C: &rarr; Desktop</span>
+        </div>
+        <div class="path-row">
+          <input type="text" class="path-input" id="activeSaveDirDisplay" value="${escapedSaveDir}">
+          <button type="button" class="btn-secondary" onclick="triggerNativeFolderPicker()" title="Browse folder using Windows File Explorer">📂 Select Folder</button>
+        </div>
+        <button type="button" class="btn-secondary" style="width:100%; font-size:13px;" onclick="updateSavePathFromInput()">Set Target Folder Path</button>
+      </div>
+
       <div class="info-row">
         <span style="color:var(--text-muted);">PC Device Name</span>
         <span style="font-weight:600;">${pcName}</span>
@@ -583,7 +558,7 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
         if (data.success && data.activeSaveDir) {
           const display = document.getElementById('activeSaveDirDisplay');
           if (display) display.value = data.activeSaveDir;
-          alert('Folder selected successfully: ' + data.activeSaveDir);
+          alert('Save folder updated to: ' + data.activeSaveDir);
         } else if (data.error) {
           alert('Folder selection: ' + data.error);
         }
@@ -604,43 +579,10 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
         });
         const data = await res.json();
         if (data.success) {
-          alert('Save path updated to: ' + data.activeSaveDir);
+          alert('Target folder updated to: ' + data.activeSaveDir);
         }
       } catch (e) {
         alert('Error updating path: ' + e.message);
-      }
-    }
-
-    // Open target folder in Windows File Explorer
-    async function openFolderOnPC(specificPath) {
-      const display = document.getElementById('activeSaveDirDisplay');
-      const target = specificPath || (display ? display.value : '');
-      try {
-        const res = await fetch('/api/open-folder', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ path: target })
-        });
-        const data = await res.json();
-        if (data.success) {
-          console.log('Opened folder on PC:', data.openedPath);
-        } else {
-          alert('Notice: ' + (data.error || 'Failed to open folder'));
-        }
-      } catch (e) {
-        alert('Could not open folder on PC: ' + e.message);
-      }
-    }
-
-    function openLastSavedFolder() {
-      openFolderOnPC(lastSavedPath);
-    }
-
-    function openHistoryItem(index) {
-      if (globalHistoryList && globalHistoryList[index]) {
-        const item = globalHistoryList[index];
-        const target = item.finalPath || item.tempPath || '';
-        openFolderOnPC(target);
       }
     }
 
@@ -741,9 +683,10 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
         if (successCard) successCard.style.display = 'block';
         if (successPathText) {
           if (lastSavedPath) {
-            successPathText.innerHTML = '<b>Saved Path on PC:</b><br><code style="color:#10B981;">' + escapeHtml(lastSavedPath) + '</code>';
+            const displayP = formatDisplayPath(lastSavedPath);
+            successPathText.innerHTML = '<b>Saved Target Location:</b> <code style="color:#10B981;">' + escapeHtml(displayP) + '</code>';
           } else {
-            successPathText.innerText = 'Saved in active QuickDrop folder on PC.';
+            successPathText.innerText = 'Saved in target QuickDrop folder.';
           }
         }
       } catch (err) {
@@ -779,15 +722,14 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
           if (data.history && data.history.length > 0) {
             globalHistoryList = data.history;
             let html = '';
-            data.history.forEach((item, idx) => {
+            data.history.forEach((item) => {
               const savedLocation = item.finalPath || item.tempPath || data.activeSaveDir || '';
-              html += '<div style="padding:10px; margin-bottom:8px; background:rgba(255,255,255,0.02); border:1px solid var(--card-border); border-radius:8px;">' +
-                      '<div style="font-weight:600; color:white;">' + escapeHtml(item.fileName) + ' (' + (item.fileSize / 1024 / 1024).toFixed(1) + ' MB)</div>' +
-                      '<div style="font-size:11px; color:var(--text-muted); margin-top:2px;">Saved to: <code style="color:var(--accent);">' + escapeHtml(savedLocation) + '</code></div>' +
-                      '<div style="display:flex; justify-content:space-between; align-items:center; margin-top:6px;">' +
-                      '<span style="font-size:11px; color:var(--text-muted);">' + escapeHtml(item.time) + ' &bull; ' + escapeHtml(item.senderName || 'Client') + '</span>' +
-                      '<button type="button" class="btn-secondary" style="font-size:11px; padding:3px 8px;" onclick="openHistoryItem(' + idx + ')">📂 Open</button>' +
-                      '</div></div>';
+              const displayLocation = formatDisplayPath(savedLocation);
+              html += '<div style="padding:12px; margin-bottom:10px; background:rgba(255,255,255,0.02); border:1px solid var(--card-border); border-radius:10px;">' +
+                      '<div style="font-weight:600; color:white; font-size:14px;">' + escapeHtml(item.fileName) + ' <span style="font-size:12px; color:var(--text-muted);">(' + (item.fileSize / 1024 / 1024).toFixed(1) + ' MB)</span></div>' +
+                      '<div style="font-size:12px; color:var(--accent); margin-top:4px;"><b>Saved to:</b> ' + escapeHtml(displayLocation) + '</div>' +
+                      '<div style="font-size:11px; color:var(--text-muted); margin-top:4px;">Received at ' + escapeHtml(item.time) + ' from ' + escapeHtml(item.senderName || 'Device') + '</div>' +
+                      '</div>';
             });
             histList.innerHTML = html;
           } else {
@@ -795,6 +737,17 @@ const server = http.createServer({ highWaterMark: 1024 * 1024 }, (req, res) => {
           }
         }
       } catch (e) {}
+    }
+
+    function formatDisplayPath(pathStr) {
+      if (!pathStr) return 'QuickDrop Target Folder';
+      // Formats cloud Linux paths gracefully so users are not confused by container internals
+      if (pathStr.startsWith('/opt/render/')) {
+        const parts = pathStr.split('/');
+        const filename = parts.pop();
+        return 'QuickDrop Storage / ' + filename;
+      }
+      return pathStr;
     }
 
     function escapeHtml(str) {
